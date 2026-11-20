@@ -31,26 +31,28 @@ Each listed claim is also rated key, normal or minor. Key means you are likely t
 - **Details** opens a pane with every listed claim, its source and its priority, and a legend of the marks at its foot.
 - **Verify** sends the model a prompt to check the flagged claims with read-only tools.
 - **Dig** (per claim, in the pane) has the model measure one claim properly and correct it at its source if it was wrong.
-- Flagged claims that are not minor are handed to the model with your next prompt, once, so it can check or retract them.
+- Flagged claims that are not minor are handed to the model with your next prompt, once, so it can check or retract them. An assumption is handed over only when it is key; the rest stay in the pane.
 
 ## How it works
 
-1. When a turn ends, the mod gathers the session's tool calls, your prompts, `CLAUDE.md`, the memory index and the memory notes closest to the answer.
-2. It cuts that down to about 53,000 characters: the lines that share the answer's rarest words, plus the head and tail of each output.
+1. When a turn ends, the mod gathers the session's tool calls, your prompts, `CLAUDE.md`, the memory index and the memory notes closest to the answer. If the session was compacted, the summary it left counts as evidence of its own kind: a claim only the summary states shows as `memory`, not as unverified.
+2. It cuts that down to about 59,000 characters. Every tool call of the turn gets a share (short outputs whole, long ones cut to the lines that share the answer's rarest words plus their head and tail). Of older calls it keeps those that hold the answer's rare words (a word found in few calls weighs more, so the model's own drafts, which repeat the answer, do not crowd out the sources), and the newest eight whatever they say.
 3. A judge model says how each claim relates to a passage and quotes 3 to 8 words from it.
-4. Code, not the judge, does the rest. It checks that the quote is really in the cited evidence, works out where the evidence came from and how old it is, and marks a read as stale when the file was changed afterwards (by an edit or a shell command) and the quoted line is gone.
+4. Claims the judge found no support for get a second look. For each, the mod searches every tool call of the session by the claim's own words, and asks the judge once more about those claims alone, with the three best passages for each. The first pass reads a cut-down view chosen by the whole answer, so a passage that backs one claim can be missing from it.
+5. Code, not the judge, does the rest. It checks that each quote is really in the cited evidence, works out where the evidence came from and how old it is, and marks a read as stale when the file was changed afterwards (by an edit or a shell command) and the quoted line is gone.
 
 The check runs after the answer is shown, so it never delays a reply.
 
 ## What it sends and what it costs
 
-Each check is one extra model call on your own account. It sends the judge:
+Each check is one extra model call on your own account, and a second, smaller one when the first leaves claims without support (up to about 16,000 characters). It sends the judge:
 
 - excerpts of the session's tool output (file contents, command output)
 - your prompts in the session
+- the summary a compaction left, when there is one
 - `CLAUDE.md`, the memory index, and up to 4 memory notes
 
-Measured on Sonnet in a session with about 200 tool calls: 7,000 to 10,000 input tokens and 400 to 500 output tokens per check, about 3 seconds.
+Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,000 to 10,000 input tokens and 400 to 500 output tokens per check, about 3 seconds. Later versions send more (the newest older calls, the summary, the second look), not yet measured.
 
 ## Settings
 
@@ -60,13 +62,20 @@ Measured on Sonnet in a session with about 200 tool calls: 7,000 to 10,000 input
 | Model (Mods panel) | Judge model | Picked under the mod's row in the Mods panel: an alias the /config menu offers (`sonnet (latest)` follows each new version), or a full model id such as `claude-sonnet-5-5` to pin one. Wins over Judge model. |
 | Effort (Mods panel) | low | The judge's reasoning effort: low, medium, high, xhigh or max. Higher is slower and costs more. |
 | Auto-correct contradictions | off | When on, a contradicted claim sends one correction prompt unasked. |
-| Timing log | summary | Writes one line per check to `~/.claude/claim-check-timings.jsonl`. `stages` adds a line per step; `off` writes nothing. |
+| Timing log | summary | Writes one line per check to `~/.claude/claim-check-timings.jsonl`, and the last four checks as the judge saw them (the prompts, the replies, the verdicts) to `~/.claude/claim-check-last.json`. `stages` adds a line per step; `off` writes neither. |
+
+## Why was this flagged?
+
+Open `~/.claude/claim-check-last.json`. It holds the last four checks of all your sessions, newest first. Each names its session and folder and carries the exact prompt the judge read (so you can see whether the passage was there), its reply, the second look's prompt and reply when there was one, and the verdicts the code made of them. The file holds excerpts of your sessions, like the transcripts do.
 
 ## Limits
 
 - Claims counted as backed are trusted. Only listed claims have their quote checked.
-- At most 8 claims and 3 assumptions are listed per answer.
-- Trimming means the judge sometimes misses a passage that was there, and a true claim shows as unverified.
+- At most 8 claims and 2 assumptions are listed per answer.
+- Trimming means the judge sometimes misses a passage that was there, and a true claim shows as unverified. In a turn with more than about 57 tool calls the oldest calls are left out.
+- What a compaction removed cannot be checked again: such claims rest on the summary alone.
+- The second look finds a passage by the claim's words. A claim that only follows from numbers in the output, or that the evidence puts in other words, is still not found.
+- Where a turn begins is taken from the engine when the turn starts. Without that (the mod loaded mid-turn), text the engine adds in your voice is told apart by how it starts (a skill's body, a command's output), and a new kind may be taken for a prompt.
 - Shell changes are detected from the command's text (redirects, `sed -i`, `mv`, `rm`, `cp` destinations, script writes, git commands that rewrite the tree). A name is made a full path where the command shows its folder (`cd /x && …`), a variable it set (`S=/tmp/x; … $S/a.ts`) or the home folder; otherwise its tail is compared. A formatter run on a whole directory is not seen.
 - Memory is found only while the session stays in or below the folder it started in.
 - Subagent turns are not checked, and neither are answers to Verify or Dig: checking those would ask for another Verify, round after round.

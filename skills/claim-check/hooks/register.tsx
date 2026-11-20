@@ -2,12 +2,13 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Check, Claim, Picks, Verdict } from '../types'
-import { buildPrompt, citedStaleFiles, collect, hits, parseReply, resolve, settledCount, SYSTEM, tokens } from './judge'
+import { amend, buildPrompt, buildSecondPrompt, citedStaleFiles, collect, doubted, hits, parseReply, resolve, SECOND, SECOND_BUDGET, settledCount, SYSTEM, tokens } from './judge'
 import type { Evidence } from './judge'
 
 const NAME = 'claim-check'
 const PANE = 'claim-check'
-const MAX_REPLY = 1_200 // tokens: 8 listed claims and 3 assumptions take about 500
+const MAX_REPLY = 1_200 // tokens: 8 listed claims and 2 assumptions take about 500
+const SECOND_REPLY = 500 // tokens: the second look's eight short objects take about 300
 const MIN_CHARS = 150 // shorter answers are chat, not claims
 const NOTES = 4 // memory notes sent to the judge: the ones that share most words with the answer
 
@@ -21,6 +22,8 @@ const switchSeenAt = atom({ plugin: 'claim-check', key: 'switchSeenAt' } as cons
 const isOwnTurn = atom({ plugin: 'claim-check', key: 'isOwnTurn' } as const, false)
 // The judge's model and effort picked in the Mods panel, read with the switch.
 const picks = atom({ plugin: 'claim-check', key: 'picks' } as const, {} as Picks)
+// The transcript's last row when the running turn began: what came after it is this turn's.
+const turnStart = atom({ plugin: 'claim-check', key: 'turnStart' } as const, null as { turnId: string; uuid: string } | null)
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 // The judge's effort until one is picked: the check stays quick.
 const DEFAULT_EFFORT = 'low'
@@ -55,10 +58,12 @@ const byWeight = (a: Claim, b: Claim) =>
   VERDICTS.indexOf(a.verdict) - VERDICTS.indexOf(b.verdict)
 const done = (check: Check | null) => (check?.status === 'done' ? check.claims : [])
 const pick = (check: Check | null, verdicts: Verdict[]) => done(check).filter(c => verdicts.includes(c.verdict)).sort(byWeight)
-// Handed to the next prompt unasked: never a minor detail (those stay in the pane), six at most.
+// Handed to the next prompt unasked: never a minor detail and an assumption only
+// when key (the rest stay in the pane), six at most.
 export const flagged = (check: Check | null) =>
   pick(check, ['contradicted', 'unverified', 'stale', 'assumed'])
     .filter(c => c.priority < 3 || c.verdict === 'contradicted')
+    .filter(c => c.verdict !== 'assumed' || c.priority === 1)
     .slice(0, 6)
 // What the Verify button asks about: those, what was only reasoned, and the minor ones too, the weightiest first.
 export const verifiable = (check: Check | null) => pick(check, ['contradicted', 'unverified', 'stale', 'assumed', 'inferred']).slice(0, 8)
@@ -83,15 +88,20 @@ const LEGEND: [Verdict, string][] = [
   ['stale', 'backed only by a read made before the file changed, or by an old memory note'],
   ['assumed', 'the answer relies on it but never states or checks it'],
   ['inferred', 'follows from the evidence by reasoning; nothing states it'],
-  ['memory', 'from a memory note or CLAUDE.md'],
+  ['memory', "from a memory note, CLAUDE.md, or the summary a compaction left of the session's earlier part"],
   ['earlier', "from an earlier turn's tool output, or your own words"],
   ['backed', "stated by this turn's tool output; counted, not listed"],
 ]
 
-const VERSION = '0.7.1'
+const VERSION = '0.9.0'
 // What the row says when a reload of this mod cut a check short.
 const INTERRUPTED = 'This answer was not checked: claim-check restarted before it finished, because its code had just been changed.'
 export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home folder; the last 200 lines
+// The last checks as the judge saw them (the prompts, the replies, the verdicts), newest first,
+// under the home folder: what answers "why was this flagged". Every session writes here, so each
+// check names its session. Written unless the log is off.
+export const LAST_CHECK = '.claude/claim-check-last.json'
+const LAST_CHECKS_KEPT = 4
 // off: nothing. summary: one line per check and per load. stages: a line at each step of a check too.
 let logMode = 'summary'
 
@@ -245,6 +255,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // Where the turn begins in the transcript. What the engine adds mid-turn in the
+  // user's voice (a skill's body, a notice) is then not taken for a new prompt.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      const rows = await $.session.messages({ last: 1 })
+      const uuid = 'deny' in rows ? undefined : rows.at(-1)?.uuid
+      await update($, turnStart, () => (uuid ? { turnId: e.turnId, uuid } : null))
+    }
+
+    return next(e)
+  }).catch(($, e, next) => next(e)) // a failure here never holds up the turn
+
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined || e.reason !== 'answer') return next(e)
     if (!(await read($, isOn))) return next(e)
@@ -268,15 +290,20 @@ export const register: Register = (on, options) => {
       const stage = (event: string, more: Record<string, unknown> = {}) =>
         logTiming($, { version: VERSION, turnId, event, ...more }, 'stages').catch(() => undefined)
       await stage('start', { answerChars: finalAnswer.length })
+      // The rows since the turn began, counted before the whole transcript is read.
+      const begun = await read($, turnStart)
+      const since = begun?.turnId === turnId ? await $.session.messages({ after: begun.uuid }).catch(() => undefined) : undefined
+      const turnRows = since === undefined || 'deny' in since ? undefined : since.length
       const msgs = await $.session.messages()
       const gotTranscript = await $.clock.now()
-      await stage('transcript', { ms: gotTranscript - now, messages: 'deny' in msgs ? 'denied' : msgs.length })
+      await stage('transcript', { ms: gotTranscript - now, messages: 'deny' in msgs ? 'denied' : msgs.length, turnRows: turnRows ?? 'unknown' })
       const home = (await $.env.get('HOME').catch(() => undefined)) || undefined
-      const { tools, user, answer } = collect('deny' in msgs ? [] : msgs, finalAnswer, home)
+      const { tools, user, summary: recap, answer } = collect('deny' in msgs ? [] : msgs, finalAnswer, home, turnRows)
       const memory = await loadMemory($, answer, now).catch(() => [])
       const gotMemory = await $.clock.now()
       await stage('memory', { ms: gotMemory - gotTranscript, toolCalls: tools.length, memoryItems: memory.length })
-      const prompt = buildPrompt({ answer, tools, memory, user, today: new Date(now).toISOString().slice(0, 10) })
+      const today = new Date(now).toISOString().slice(0, 10)
+      const prompt = buildPrompt({ answer, tools, memory, user, summary: recap, today })
       // The Mods panel's pick wins over the Judge model setting.
       const pick = await read($, picks)
       const model = pick.model ?? judge
@@ -284,15 +311,26 @@ export const register: Register = (on, options) => {
       const asked = await $.clock.now()
       await stage('asking', { buildMs: asked - gotMemory, promptChars: prompt.length, model, effort })
       const r = await $.model.complete({ model, system: SYSTEM, prompt, maxTokens: MAX_REPLY, effort, timeoutMs: 180_000 })
+      const all = [...tools, ...memory, user, ...(recap ? [recap] : [])]
+      // The second look: claims the first pass left without support are looked up
+      // in the whole session by their own words, and the judge is asked about those
+      // alone. A second call that fails changes nothing.
+      const firstAnswered = await $.clock.now()
+      const doubts = r.isAnswered ? doubted(r.text, all).slice(0, SECOND_BUDGET.claims) : []
+      const again = doubts.length > 0 ? buildSecondPrompt({ doubts, all, today }) : null
+      if (again !== null) await stage('asking again', { claims: doubts.length, promptChars: again.length })
+      const r2 = again === null ? undefined : await $.model.complete({ model, system: SECOND, prompt: again, maxTokens: SECOND_REPLY, effort, timeoutMs: 60_000 })
+      const reply = !r.isAnswered ? '' : r2?.isAnswered ? amend(r.text, r2.text, doubts) : r.text
       const answered = await $.clock.now()
-      const stats = {
+      const stats: NonNullable<Check['stats']> = {
         gatherSeconds: Math.round((asked - now) / 1000),
         judgeSeconds: Math.round((answered - asked) / 1000),
-        promptChars: prompt.length,
-        replyTokens: r.isAnswered ? r.usage.output_tokens : 0,
+        promptChars: prompt.length + (again?.length ?? 0),
+        replyTokens: (r.isAnswered ? r.usage.output_tokens : 0) + (r2?.isAnswered ? r2.usage.output_tokens : 0),
         isCut: r.isAnswered && (parseReply(r.text)?.isCut ?? true),
         model,
         effort,
+        ...(again === null ? {} : { lookedAgain: doubts.length, foundAgain: 0 }),
       }
       // One line per check: where the time went and what came out.
       const summary = (outcome: string, claims: Claim[] = [], settled = 0) =>
@@ -310,20 +348,60 @@ export const register: Register = (on, options) => {
           judgeMs: answered - asked,
           promptChars: prompt.length,
           replyTokens: stats.replyTokens,
-          inputTokens: r.isAnswered ? r.usage.input_tokens : 0,
+          inputTokens: (r.isAnswered ? r.usage.input_tokens : 0) + (r2?.isAnswered ? r2.usage.input_tokens : 0),
+          // The second look: how many claims it was asked about, how many it found support for, and its cost.
+          ...(again === null
+            ? {}
+            : {
+                second: {
+                  claims: doubts.length,
+                  found: stats.foundAgain ?? 0,
+                  ms: answered - firstAnswered,
+                  promptChars: again.length,
+                  inputTokens: r2?.isAnswered ? r2.usage.input_tokens : 0,
+                  outcome: r2?.isAnswered ? 'ok' : (r2?.reason ?? 'none'),
+                },
+              }),
           outcome,
           settled,
           flags: Object.fromEntries(VERDICTS.map(v => [v, claims.filter(c => c.verdict === v).length] as const).filter(([, n]) => n > 0)),
           key: claims.filter(c => c.priority === 1).length,
         }).catch(() => undefined) // a log that cannot be written costs nothing
-      const all = [...tools, ...memory, user]
       // A read made before a later change counts as stale only if its quote is gone from the file now.
       const fresh = new Map<string, string>()
-      for (const file of r.isAnswered ? citedStaleFiles(r.text, all) : []) {
+      for (const file of r.isAnswered ? citedStaleFiles(reply, all) : []) {
         const text = await $.fs.read(file).catch(() => undefined)
         if (text !== undefined) fresh.set(file, text)
       }
-      const claims = r.isAnswered ? resolve(r.text, all, fresh, answer) : null
+      const claims = r.isAnswered ? resolve(reply, all, fresh, answer) : null
+      if (claims && again !== null) stats.foundAgain = doubts.filter(d => claims[d.at] !== undefined && claims[d.at]?.verdict !== 'unverified').length
+      if (logMode !== 'off' && home) {
+        const seen = {
+          at: new Date(now).toISOString(),
+          version: VERSION,
+          session: await $.session.id().catch(() => ''),
+          cwd: await $.session.cwd().catch(() => ''),
+          turnId,
+          model,
+          effort,
+          messages: 'deny' in msgs ? 0 : msgs.length,
+          turnRows: turnRows ?? null,
+          toolCalls: tools.length,
+          thisTurnCalls: tools.filter(t => t.isCurrent).length,
+          prompt,
+          reply: r.isAnswered ? r.text : r.reason,
+          second: again === null ? null : { prompt: again, reply: r2?.isAnswered ? r2.text : (r2?.reason ?? '') },
+          claims,
+        }
+        const path = `${home}/${LAST_CHECK}`
+        // ponytail: read, then written whole; two sessions finishing a check at once can lose one entry.
+        const old: unknown = await $.fs
+          .read(path)
+          .then(text => JSON.parse(text) as unknown)
+          .catch(() => undefined)
+        const kept = old && typeof old === 'object' && Array.isArray((old as { checks?: unknown }).checks) ? (old as { checks: unknown[] }).checks : []
+        await $.fs.write(path, JSON.stringify({ checks: [seen, ...kept].slice(0, LAST_CHECKS_KEPT) }, null, 1)).catch(() => undefined) // a file that cannot be written costs nothing
+      }
       if (!claims) {
         const error = !r.isAnswered
           ? r.reason
@@ -334,7 +412,7 @@ export const register: Register = (on, options) => {
         await settle({ turnId, status: 'failed', claims: [], settled: 0, isFedBack: false, error, stats })
         return
       }
-      const settled = settledCount(r.isAnswered ? r.text : '')
+      const settled = settledCount(reply)
       await summary(stats.isCut ? 'cut' : 'ok', claims, settled)
       const result = await settle({ turnId, status: 'done', claims, settled, isFedBack: false, stats })
 
@@ -503,6 +581,9 @@ export const register: Register = (on, options) => {
               Checked in {check.stats.gatherSeconds + check.stats.judgeSeconds} s (gathering evidence {check.stats.gatherSeconds} s, judge{' '}
               {check.stats.judgeSeconds} s). The judge read {Math.round(check.stats.promptChars / 1000)}k characters and wrote{' '}
               {check.stats.replyTokens} tokens.{check.stats.model ? ` The judge was ${check.stats.model} at ${check.stats.effort ?? DEFAULT_EFFORT} effort.` : ''}
+              {check.stats.lookedAgain
+                ? ` It looked again, across the whole session, for ${check.stats.lookedAgain} ${check.stats.lookedAgain === 1 ? 'claim' : 'claims'} it had found no support for, and found it for ${check.stats.foundAgain ?? 0}.`
+                : ''}
               {check.stats.isCut ? ' Its reply was cut off, so some claims may be missing.' : ''}
             </Text>
           </Box>
