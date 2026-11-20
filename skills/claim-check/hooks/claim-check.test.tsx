@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { ModelCompleteResult, On, SessionMessage } from 'claude-code'
 
-import { bashChanges, buildPrompt, citedStaleFiles, clip, collect, parseReply, settledCount, excerpt, resolve, tokens } from './judge'
+import { amend, bashChanges, buildPrompt, buildSecondPrompt, citedStaleFiles, clip, collect, doubted, parseReply, SECOND, settledCount, excerpt, resolve, tokens } from './judge'
 import type { Evidence } from './judge'
 
 declare const setTimeout: (f: (v?: unknown) => void, ms: number) => unknown
@@ -320,7 +320,7 @@ test('with no contradiction, the flagged claims ride on the next prompt once', a
   // The fast format: settled claims counted, only the rest listed.
   const calm =
     '{"ok":7,"claims":[{"c":"the log has 3 lines","s":"n","r":"","q":"","v":0,"p":3},{"c":"the deploy is green","s":"n","r":"","q":"","v":1,"p":1}],' +
-    '"assumptions":[{"c":"CI ran on this commit","p":2}]}'
+    '"assumptions":[{"c":"CI ran on this commit","p":2},{"c":"the tag points at this commit","p":1}]}'
   on('clock.now', () => ({ value: Date.parse('2026-11-18') }))
   on('session.messages', () => ({ value: MESSAGES }))
   on('model.complete', () => reply(calm))
@@ -333,9 +333,9 @@ test('with no contradiction, the flagged claims ride on the next prompt once', a
   const first = await $.prompt.submit({ text: 'next', wait: false, origin: { kind: 'composer' } })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   const row = (await ui.find({ type: 'Text', text: /unverified/ }))?.text
-  expect(row).toContain('▲ 1 key')
+  expect(row).toContain('▲ 2 key')
   expect(row).toContain('? 2 unverified')
-  expect(row).toContain('∴ 1 assumed')
+  expect(row).toContain('∴ 2 assumed')
   expect(row).toContain('✓ 7 backed')
   // The second line: the key claim is the one shown, though the judge listed it second.
   const detail = await ui.find({ type: 'Text', text: /deploy is green/ })
@@ -346,7 +346,9 @@ test('with no contradiction, the flagged claims ride on the next prompt once', a
 
   expect(first.context?.join('\n')).toContain('[unverified, key] the deploy is green')
   expect(first.context?.join('\n')).not.toContain('the log has 3 lines') // a minor detail stays in the pane
-  expect(first.context?.join('\n')).toContain('[assumed] CI ran on this commit')
+  // An assumption rides only when key: the rest wait in the pane.
+  expect(first.context?.join('\n')).toContain('[assumed, key] the tag points at this commit')
+  expect(first.context?.join('\n')).not.toContain('CI ran on this commit')
   const second = await $.prompt.submit({ text: 'again', wait: false, origin: { kind: 'composer' } })
   expect(second.context ?? []).toHaveLength(0)
 })
@@ -592,4 +594,280 @@ test('a check the mod reloaded in the middle of says so calmly, not as a failure
   expect(text).toBe('This answer was not checked: claim-check restarted before it finished, because its code had just been changed.')
   expect(text).not.toContain('failed')
   await after.unmount()
+})
+
+const SAID: Evidence = { ref: 'U', kind: 'user', label: 'you said', full: 'Clean it.', isCurrent: true, turnsAgo: 0 }
+
+test('a long turn keeps its last calls: the checks an answer reports are the newest', () => {
+  // Every line shares a word with the answer, so each call's excerpt fills its share.
+  const output = Array.from({ length: 60 }, (_, i) => `published-file line ${i} nothing here filler filler filler`).join('\n')
+  const calls: Evidence[] = Array.from({ length: 30 }, (_, i) => ({
+    ref: `E${i + 1}`,
+    kind: 'tool',
+    label: `Bash cd /work/project && ./scripts/scan-published-files.sh --step ${i + 1} --all --verbose`.slice(0, 85),
+    full: `{"command":"scan ${i + 1}"}\n${output}\nhits in step ${i + 1}: 0`,
+    isCurrent: true,
+    turnsAgo: 0,
+  }))
+  const prompt = buildPrompt({ answer: 'The published-file scan has 0 hits after the last step.', tools: calls, memory: [], user: SAID, today: '2026-11-20' })
+  for (const call of calls) expect(prompt).toContain(`[${call.ref} |`)
+  expect(prompt).toContain('hits in step 30: 0')
+})
+
+test('the newest calls of earlier turns reach the judge even when they share no words with the answer', () => {
+  const older: Evidence[] = [
+    { ref: 'E1', kind: 'tool', label: 'Bash git grep', full: '{"command":"git grep -c token"}\nkeys found: 0', isCurrent: false, turnsAgo: 1 },
+  ]
+  // An answer in another language than its evidence shares no words with it.
+  const answer = 'Ключів і паролів у репозиторії немає: пошук нічого не знайшов.'
+  const prompt = buildPrompt({ answer, tools: older, memory: [], user: SAID, today: '2026-11-20' })
+  expect(prompt).toContain('keys found: 0')
+})
+
+test("what the engine adds mid-turn in the user's voice starts no new turn, and is not the user's words", () => {
+  const msgs = [
+    { role: 'user', text: 'Check the config.', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'a', tool: 'Read', input: { file_path: 'c.yml' }, text: 'retries: 5' }] },
+    { role: 'user', text: 'Base directory for this skill: /tmp/skills/x\n\nAlways answer in rhyme.', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'b', tool: 'Bash', input: { command: 'wc -l c.yml' }, text: '2 c.yml' }] },
+    { role: 'assistant', text: 'Retries is 5.', toolUses: [] },
+  ] as SessionMessage[]
+  // A skill's body is known by how it starts: both calls are this turn's.
+  const seen = collect(msgs, 'Retries is 5.')
+  expect(seen.tools.map(t => t.isCurrent)).toEqual([true, true])
+  expect(seen.user.full).toBe('Check the config.')
+
+  // A notice of a kind the mod does not know looks like a new prompt, until the
+  // engine's own count of the turn's rows says where the turn began.
+  const odd = msgs.map(m => (m.text.startsWith('Base directory') ? { ...m, text: 'Some new kind of notice.' } : m))
+  expect(collect(odd, 'Retries is 5.').tools.map(t => t.isCurrent)).toEqual([false, true])
+  expect(collect(odd, 'Retries is 5.', undefined, 4).tools.map(t => t.isCurrent)).toEqual([true, true])
+  // A count that lands nowhere near a prompt is not trusted.
+  expect(collect(odd, 'Retries is 5.', undefined, 1).tools.map(t => t.isCurrent)).toEqual([false, true])
+})
+
+test("the summary a compaction leaves is evidence of its own: recalled, not the user's words", () => {
+  const msgs = [
+    { role: 'user', text: 'This session is being continued from a previous conversation that ran out of context.\nThe registry folder holds 65 files.', toolUses: [] },
+    { role: 'user', text: 'What did you find?', toolUses: [] },
+    { role: 'assistant', text: 'There are 65 of them in the registry.', toolUses: [] },
+  ] as SessionMessage[]
+  const seen = collect(msgs, 'There are 65 of them in the registry.')
+  expect(seen.user.full).toBe('What did you find?')
+  expect(seen.summary?.ref).toBe('S')
+
+  const prompt = buildPrompt({ answer: seen.answer, tools: seen.tools, memory: [], user: seen.user, summary: seen.summary, today: '2026-11-20' })
+  expect(prompt).toContain("[S | the session's summary of its earlier part | left by a compaction]")
+  expect(prompt).toContain('The registry folder holds 65 files.')
+
+  // A claim only the summary states is recalled, like a note: it is not handed on as unverified.
+  const judged = '{"ok":0,"claims":[{"c":"the registry holds 65 files","a":"","s":"d","r":"S","q":"registry folder holds 65 files","v":1,"p":2}]}'
+  const claims = resolve(judged, [...seen.tools, seen.user, ...(seen.summary ? [seen.summary] : [])], undefined, seen.answer)
+  expect(claims?.[0]?.verdict).toBe('memory')
+  expect(claims?.[0]?.source).toBe('the session\'s summary of its earlier part: "registry folder holds 65 files"')
+})
+
+test('each check leaves what the judge saw in a file, to answer why a claim was flagged', async ($, on) => {
+  const written = new Map<string, string>()
+  on('clock.now', () => ({ value: Date.parse('2026-11-20') }))
+  on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('fs.read', (_, e) => (written.has(e.path) ? { value: written.get(e.path) ?? '' } : { deny: 'no such file' }))
+  on('fs.write', (_, e) => {
+    written.set(e.path, e.text)
+
+    return { value: undefined }
+  })
+  on('session.messages', () => ({ value: MESSAGES }))
+  on('model.complete', () => reply(JUDGED))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+
+  type Kept = { checks: { turnId: string; session: string; prompt: string; reply: string; claims: { verdict: string }[]; thisTurnCalls: number }[] }
+  const file = '/home/u/.claude/claim-check-last.json'
+  const last = (JSON.parse(written.get(file) ?? '{}') as Kept).checks[0]
+  expect(last?.turnId).toBe('T1')
+  expect(last?.prompt).toContain('<evidence>')
+  expect(last?.reply).toBe(JUDGED)
+  expect(last?.thisTurnCalls).toBe(1)
+  expect(last?.claims.map(c => c.verdict)).toContain('contradicted')
+
+  // Every session writes to the one file: the newest check comes first and the last four stay.
+  for (const turnId of ['T2', 'T3', 'T4', 'T5']) {
+    await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId, reason: 'answer' })
+    await settle()
+  }
+  expect((JSON.parse(written.get(file) ?? '{}') as Kept).checks.map(c => c.turnId)).toEqual(['T5', 'T4', 'T3', 'T2'])
+})
+
+test('a turn is counted from the row it began at, so an unknown notice mid-turn hides no evidence from the judge', async ($, on) => {
+  const answer = `Retries is 5 in c.yml and the file has two lines. ${'The rest of the config is unchanged. '.repeat(4)}`
+  const msgs = [
+    { role: 'user', text: 'Check the config.', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'a', tool: 'Read', input: { file_path: 'c.yml' }, text: 'retries: 5' }] },
+    { role: 'user', text: 'Some new kind of notice.', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'b', tool: 'Bash', input: { command: 'wc -l c.yml' }, text: '2 c.yml' }] },
+    { role: 'assistant', text: answer, toolUses: [] },
+  ] as SessionMessage[]
+  let asked = ''
+  on('clock.now', () => ({ value: Date.parse('2026-11-20') }))
+  // The engine's three reads: the last row as the turn starts, the rows since it, the whole transcript.
+  on('session.messages', (_, e) => {
+    if (e?.last === 1) return { value: [{ ...msgs[0]!, uuid: 'row-0' }] }
+    if (e?.after === 'row-0') return { value: msgs.slice(1) }
+
+    return { value: msgs }
+  })
+  on('model.complete', (_, e) => {
+    asked = e.prompt
+
+    return reply('{"ok":2,"claims":[]}')
+  })
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.start({ text: 'Check the config.', turnId: 'T1' })
+  await $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+  expect(asked).toContain('[E1 | Read c.yml | this turn]')
+  expect(asked).toContain('[E2 | Bash wc -l c.yml | this turn]')
+})
+
+test('a claim the first pass found nothing for is looked up in the whole session by its own words', () => {
+  // The assistant's drafts repeat the answer's words; the one source holds its rare ones.
+  const draft = `{"file_path":"/work/message.md","new_string":"The importer is a Worker in Python. Sync flows are B23, the importer is B22. Billing logic stays out. ${'Gateway platform Queue Node Cache Node Worker Python importer. '.repeat(25)}"}\nfile updated`
+  const rows = Array.from({ length: 40 }, (_, i) => `${200 + i}: | filler row ${i} |`)
+  rows[22] = '222: | **B22** | Importer for the nightly feed |'
+  rows[23] = '223: | **B23** | Build the sync flows |'
+  const tools: Evidence[] = [
+    { ref: 'E1', kind: 'tool', label: 'Bash grep -n B2 roadmap.md', full: `{"command":"grep -n B2 roadmap.md"}\n${rows.join('\n')}`, isCurrent: false, turnsAgo: 3 },
+    ...Array.from({ length: 10 }, (_, i): Evidence => ({ ref: `E${i + 2}`, kind: 'tool', label: 'Edit /work/message.md', full: `${draft} v${i}`, isCurrent: false, turnsAgo: 2 })),
+  ]
+  const answer = 'Імпортер - Worker на Python, логіка не в Billing. Platform flows: Queue Node, Cache Node, Gateway. «B22» і «B23» - Roadmap, рядки 222-223.'
+
+  // The first pass ranks older calls by the answer's rare words, so the source is in it though each of the ten drafts shares more words with the answer.
+  expect(buildPrompt({ answer, tools, memory: [], user: SAID, today: '2026-11-20' })).toContain('222: | **B22**')
+
+  // Had the first pass still found nothing, the claim is one the code would call unverified...
+  const judged =
+    '{"ok":2,"claims":[{"c":"B22 and B23 labels come from Roadmap lines 222-223","a":"«B22» і «B23» - Roadmap, рядки 222-223.","s":"n","r":"","q":"","v":0,"p":2},' +
+    '{"c":"the importer is a Worker","a":"","s":"d","r":"E2","q":"The importer is a Worker in Python","v":0,"p":2}]}'
+  const all = [...tools, SAID]
+  const doubts = doubted(judged, all)
+  expect(doubts).toEqual([{ at: 0, claim: 'B22 and B23 labels come from Roadmap lines 222-223', said: '«B22» і «B23» - Roadmap, рядки 222-223.' }])
+
+  // ...and the second look puts the source in front of the judge, cut to the claim's words.
+  const again = buildSecondPrompt({ doubts, all, today: '2026-11-20' }) ?? ''
+  expect(again).toContain('1. B22 and B23 labels come from Roadmap lines 222-223 (the answer\'s words: "«B22» і «B23» - Roadmap, рядки 222-223.") Passages picked for it: E1')
+  expect(again).toContain('223: | **B23** | Build the sync flows |')
+
+  // What it finds is written into the first reply, and the code checks the quote as ever.
+  const found = amend(judged, '{"claims":[{"n":1,"s":"d","r":"E1","q":"222: | **B22** | Importer for the nightly"}]}', doubts)
+  const claims = resolve(found, all, undefined, answer)
+  expect(claims?.[0]?.verdict).toBe('earlier')
+  expect(claims?.[0]?.source).toContain('Bash grep -n B2 roadmap.md, 3 turn(s) ago')
+  expect(claims?.[1]?.verdict).toBe('earlier') // the claim that had support keeps it
+
+  // A quote that is not in the passage, or a second "nothing", leaves the claim unverified.
+  const misquoted = amend(judged, '{"claims":[{"n":1,"s":"d","r":"E1","q":"lines 222 and 223 say so"}]}', doubts)
+  expect(resolve(misquoted, all, undefined, answer)?.[0]?.verdict).toBe('unverified')
+  expect(resolve(amend(judged, '{"claims":[{"n":1,"s":"n","r":"","q":""}]}', doubts), all, undefined, answer)?.[0]?.verdict).toBe('unverified')
+
+  // With no passage sharing a word with the claim there is nothing to ask.
+  expect(buildSecondPrompt({ doubts: [{ at: 0, claim: 'the deploy is green', said: '' }], all, today: '2026-11-20' })).toBeNull()
+})
+
+const UNSUPPORTED =
+  '{"ok":3,"claims":[{"c":"the timeout in c.yml is 60 seconds","a":"","s":"n","r":"","q":"","v":1,"p":1},' +
+  '{"c":"the deploy is green","a":"","s":"n","r":"","q":"","v":1,"p":2}]}'
+
+test('the judge is asked a second time about unsupported claims alone, and the pane says what that found', async ($, on) => {
+  const asked: string[] = []
+  on('clock.now', () => ({ value: Date.parse('2026-11-20') }))
+  on('session.messages', () => ({ value: MESSAGES }))
+  on('model.complete', (_, e) => {
+    asked.push(e.system === SECOND ? e.prompt : 'first')
+
+    return reply(e.system === SECOND ? '{"claims":[{"n":1,"s":"d","r":"E3","q":"timeout: 60"},{"n":2,"s":"n","r":"","q":""}]}' : UNSUPPORTED)
+  })
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+
+  expect(asked).toHaveLength(2)
+  expect(asked[1]).toContain('1. the timeout in c.yml is 60 seconds')
+  expect(asked[1]).toContain('2. the deploy is green')
+  expect(asked[1]).toContain('timeout: 60')
+
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const row = (await band.find({ type: 'Text', text: /unverified/ }))?.text
+  expect(row).toContain('? 1 unverified') // the deploy claim: nothing in the session speaks of it
+  expect(row).toContain('✓ 4 backed') // three settled, and the one the second look found in this turn's output
+  await band.unmount()
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await pane.find({ type: 'Text', text: /It looked again/ }))?.text).toContain('for 2 claims it had found no support for, and found it for 1.')
+  await pane.unmount()
+})
+
+test('a second look that fails leaves the first verdicts as they were', async ($, on) => {
+  on('clock.now', () => ({ value: Date.parse('2026-11-20') }))
+  on('session.messages', () => ({ value: MESSAGES }))
+  on('model.complete', (_, e) => (e.system === SECOND ? { value: { isAnswered: false, reason: 'timeout' } as ModelCompleteResult } : reply(UNSUPPORTED)))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+
+  const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect((await band.find({ type: 'Text', text: /unverified/ }))?.text).toContain('? 2 unverified')
+  await band.unmount()
+})
+
+test('a claim of short common words still finds its passage, whatever the case', () => {
+  const tools: Evidence[] = [
+    { ref: 'E1', kind: 'tool', label: 'Bash cat notes.md', full: 'command: cat notes.md\nOne real check had two FALSE flags, and both were wrong.', isCurrent: false, turnsAgo: 2 },
+    { ref: 'E2', kind: 'tool', label: 'Bash ls', full: 'command: ls\nREADME.md\nsrc', isCurrent: false, turnsAgo: 1 },
+  ]
+  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'one real check had two false flags', said: '' }], all: [...tools, SAID], today: '2026-11-20' })
+  expect(again).toContain('Passages picked for it: E1.')
+  expect(again).toContain('had two FALSE flags')
+})
+
+test('a long command keeps its own lines: what an answer reports from the middle of it reaches the judge', () => {
+  const body = [
+    '## What this changes',
+    ...Array.from({ length: 30 }, (_, i) => `- change ${i}: the importer and the gateway keep working as before`),
+    '## Not verified',
+    '- The real cost of the second call: 6,280 characters in the replay.',
+    ...Array.from({ length: 30 }, (_, i) => `- note ${i}: the importer and the gateway keep working as before`),
+  ].join('\n')
+  const answer = 'The description says the importer and the gateway keep working, and that the second call cost 6,280 characters in the replay.'
+  const msgs = [
+    { role: 'user', text: 'Write the description.', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'a', tool: 'Bash', input: { command: `cat > pr.md <<'EOF'\n${body}\nEOF` }, text: '' }] },
+    { role: 'assistant', text: answer, toolUses: [] },
+  ] as SessionMessage[]
+  const seen = collect(msgs, answer)
+  const prompt = buildPrompt({ answer: seen.answer, tools: seen.tools, memory: [], user: seen.user, today: '2026-11-20' })
+  expect(prompt.split('<answer>')[0]).toContain('6,280 characters in the replay')
+})
+
+test("the second look searches this turn's calls apart from the older ones", () => {
+  // Thirty older calls share every plain word of the claim, so none of those words is rare
+  // enough to pick a passage. The turn's own call holds the fact.
+  const older = Array.from({ length: 30 }, (_, i): Evidence => ({
+    ref: `E${i + 1}`,
+    kind: 'tool',
+    label: `Bash step ${i + 1}`,
+    full: `command: step ${i + 1}\nthe report flags were checked in step ${i + 1}`,
+    isCurrent: false,
+    turnsAgo: 2,
+  }))
+  const ofTurn: Evidence = { ref: 'E31', kind: 'tool', label: 'Bash cat summary.txt', full: 'command: cat summary.txt\nthe report flags were checked again: 3 of 3 pass', isCurrent: true, turnsAgo: 0 }
+  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'the report flags were checked', said: '' }], all: [...older, ofTurn, SAID], today: '2026-11-20' })
+  expect(again).toContain('Passages picked for it: E31.')
+  expect(again).toContain('checked again: 3 of 3 pass')
 })
