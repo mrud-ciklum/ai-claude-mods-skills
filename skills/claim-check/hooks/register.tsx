@@ -93,7 +93,7 @@ const LEGEND: [Verdict, string][] = [
   ['backed', "stated by this turn's tool output; counted, not listed"],
 ]
 
-const VERSION = '0.9.0'
+const VERSION = '0.9.1'
 // What the row says when a reload of this mod cut a check short.
 const INTERRUPTED = 'This answer was not checked: claim-check restarted before it finished, because its code had just been changed.'
 export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home folder; the last 200 lines

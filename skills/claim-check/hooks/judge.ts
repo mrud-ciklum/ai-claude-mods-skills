@@ -94,6 +94,14 @@ const isPrompt = (m: SessionMessage) => isUserText(m) && !SUMMARY.test(m.text) &
 const brief = (input: Record<string, unknown>) =>
   String(input.file_path ?? input.command ?? input.url ?? input.pattern ?? JSON.stringify(input)).slice(0, 80)
 
+// A call's input as text: each argument on a line of its own, a string as it
+// is written. A command or a file's text keeps its line breaks, so a long one
+// is cut by its lines (excerpt), not as one endless line.
+const shown = (input: Record<string, unknown>) =>
+  Object.entries(input)
+    .map(([name, value]) => `${name}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
+    .join('\n')
+
 // ponytail: a file is known in a command by its extension, from this list.
 // A file with another or no extension is seen only as a redirect's target.
 const EXT =
@@ -258,7 +266,7 @@ export function collect(msgs: readonly SessionMessage[], finalAnswer: string, ho
         ref,
         kind: 'tool',
         label: `${u.tool} ${brief(u.input)}`,
-        full: `${JSON.stringify(u.input)}\n${u.text ?? ''}`,
+        full: `${shown(u.input)}\n${u.text ?? ''}`,
         isCurrent: idx > start,
         turnsAgo: turns - turn,
         path,
@@ -319,9 +327,11 @@ export const hits = (text: string, toks: readonly string[]) => toks.filter(t => 
 // A line over 400 characters (a JSON row, a minified file) cut to the parts
 // around the answer's words, not to its head: the figure asked about is as
 // likely at its end.
-export function clip(line: string, toks: readonly string[]): string {
+// `isLoose`: the words are in lower case and match whatever the line's case.
+export function clip(line: string, toks: readonly string[], isLoose = false): string {
   if (line.length <= 400) return line
-  const at = toks.map(t => line.indexOf(t)).filter(i => i >= 0).sort((a, b) => a - b)
+  const hay = isLoose ? line.toLowerCase() : line
+  const at = toks.map(t => hay.indexOf(t)).filter(i => i >= 0).sort((a, b) => a - b)
   if (at.length === 0) return `${line.slice(0, 397)}…`
   let out = ''
   let end = 0 // how far the line is already covered
@@ -340,13 +350,15 @@ export function clip(line: string, toks: readonly string[]): string {
 
 // A long text cut to `cap`: its head and tail, plus the lines that hold the answer's
 // rarest words (and their neighbours), in their own order, gaps marked "…".
-export function excerpt(text: string, toks: readonly string[], cap: number): string {
+// `isLoose`: the words are in lower case and match whatever the text's case.
+export function excerpt(text: string, toks: readonly string[], cap: number, isLoose = false): string {
   if (text.length <= cap) return text
   // ponytail: looks at the first 20,000 lines only; rank in chunks if outputs get longer.
   const lines = text.split('\n').slice(0, 20_000)
+  const hay = isLoose ? lines.map(line => line.toLowerCase()) : lines
   const score = new Map<number, number>()
   for (const t of toks) {
-    const found = lines.flatMap((line, i) => (line.includes(t) ? [i] : []))
+    const found = hay.flatMap((line, i) => (line.includes(t) ? [i] : []))
     for (const i of found) score.set(i, (score.get(i) ?? 0) + 1 / found.length)
   }
 
@@ -371,7 +383,7 @@ export function excerpt(text: string, toks: readonly string[], cap: number): str
   let out = ''
   let prev = -1
   for (const i of [...keep].sort((a, b) => a - b)) {
-    out += `${i === prev + 1 ? '' : '…\n'}${clip(lines[i] ?? '', toks)}\n`
+    out += `${i === prev + 1 ? '' : '…\n'}${clip(lines[i] ?? '', toks, isLoose)}\n`
     prev = i
   }
 
@@ -411,8 +423,17 @@ function pack(list: readonly Evidence[], toks: readonly string[], per: number, t
 // few of the texts weighs more than one found in most: an echo of the answer
 // (the assistant's own draft written to a file) shares many common words with
 // it, a source shares the rare ones. Of equals, the newer comes first.
-function ranked(pool: readonly Evidence[], toks: readonly string[]): { e: Evidence; hits: number; score: number }[] {
-  const has = pool.map(e => toks.map(t => e.full.includes(t)))
+// `textOf` gives the text to search: the caller's own lower-case copy for words in lower case.
+function ranked(
+  pool: readonly Evidence[],
+  toks: readonly string[],
+  textOf: (e: Evidence) => string = e => e.full,
+): { e: Evidence; hits: number; score: number }[] {
+  const has = pool.map(e => {
+    const text = textOf(e)
+
+    return toks.map(t => text.includes(t))
+  })
   const spread = toks.map((_, k) => has.reduce((n, row) => n + Number(row[k] ?? false), 0))
 
   return pool
@@ -687,7 +708,24 @@ export function doubted(reply: string, all: readonly Evidence[]): Doubt[] {
 }
 
 // The second look reads at most this: eight claims, three passages each, cut to the claim's words.
-export const SECOND_BUDGET = { claims: 8, perClaim: 3, per: 800, total: 16_000 }
+// A passage is picked when the claim's words it holds weigh enough: one word found in at most
+// `rareIn` passages, or several commoner ones that add up to as much.
+export const SECOND_BUDGET = { claims: 8, perClaim: 3, per: 800, total: 16_000, rareIn: 3 }
+
+// The words a claim is looked up by, in lower case: every word of four letters
+// or more and every number of two digits or more. Looser than `tokens`: a
+// claim is one short sentence ("the check had two false flags") whose plain
+// words are all it has, and a word found in most passages weighs little (ranked).
+export function claimWords(text: string): string[] {
+  const out = new Set<string>()
+  for (const m of text.toLowerCase().matchAll(/[\p{L}\p{N}_][\p{L}\p{N}_@~./:-]*/gu)) {
+    const t = m[0].replace(/[.:,/-]+$/, '')
+    if (/^\p{N}+$/u.test(t) ? t.length >= 2 : t.length >= 4) out.add(t)
+    for (const part of t.match(/\p{N}{2,}/gu) ?? []) out.add(part)
+  }
+
+  return [...out].slice(0, 60)
+}
 
 // The second look's prompt: each doubted claim with the passages of the whole
 // session that hold most of its own words (as the judge put it, in the
@@ -695,11 +733,15 @@ export const SECOND_BUDGET = { claims: 8, perClaim: 3, per: 800, total: 16_000 }
 // passage shares a word with any of them: then there is nothing to ask.
 export function buildSecondPrompt(args: { doubts: readonly Doubt[]; all: readonly Evidence[]; today: string }): string | null {
   const pool = args.all.filter(e => e.kind !== 'user')
+  const lower = new Map(pool.map(e => [e, e.full.toLowerCase()] as const))
   const picked = new Map<Evidence, { words: Set<string>; text?: string }>()
   const tops = args.doubts.slice(0, SECOND_BUDGET.claims).map(d => {
-    const toks = tokens(`${d.claim} ${d.said}`)
-    const top = ranked(pool, toks)
-      .filter(x => x.hits > 0)
+    // The claim as the judge put it gives the words; the answer's own wording adds only its
+    // numbers, names and paths. Its plain words are in the answer's language, and rare there:
+    // they would pick whatever else was written in that language, not the evidence.
+    const toks = [...new Set([...claimWords(d.claim), ...tokens(d.said).map(t => t.toLowerCase())])]
+    const top = ranked(pool, toks, e => lower.get(e) ?? '')
+      .filter(x => x.score >= 1 / SECOND_BUDGET.rareIn)
       .slice(0, SECOND_BUDGET.perClaim)
       .map(x => x.e)
     for (const e of top) {
@@ -714,7 +756,7 @@ export function buildSecondPrompt(args: { doubts: readonly Doubt[]; all: readonl
   // In the order they were picked, so the first claims get their passages when not all fit.
   let size = 0
   for (const [e, entry] of picked) {
-    const text = `${head(e)}\n${excerpt(e.full, [...entry.words], SECOND_BUDGET.per)}\n\n`
+    const text = `${head(e)}\n${excerpt(e.full, [...entry.words], SECOND_BUDGET.per, true)}\n\n`
     if (size + text.length > SECOND_BUDGET.total) continue
     entry.text = text
     size += text.length

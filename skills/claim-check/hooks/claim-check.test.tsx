@@ -759,7 +759,7 @@ test('a claim the first pass found nothing for is looked up in the whole session
 
   // ...and the second look puts the source in front of the judge, cut to the claim's words.
   const again = buildSecondPrompt({ doubts, all, today: '2026-11-20' }) ?? ''
-  expect(again).toContain('1. B22 and B23 labels come from Roadmap lines 222-223 (the answer\'s words: "«B22» і «B23» - Roadmap, рядки 222-223.") Passages picked for it: E1,')
+  expect(again).toContain('1. B22 and B23 labels come from Roadmap lines 222-223 (the answer\'s words: "«B22» і «B23» - Roadmap, рядки 222-223.") Passages picked for it: E1')
   expect(again).toContain('223: | **B23** | Build the sync flows |')
 
   // What it finds is written into the first reply, and the code checks the quote as ever.
@@ -824,4 +824,33 @@ test('a second look that fails leaves the first verdicts as they were', async ($
   const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect((await band.find({ type: 'Text', text: /unverified/ }))?.text).toContain('? 2 unverified')
   await band.unmount()
+})
+
+test('a claim of short common words still finds its passage, whatever the case', () => {
+  const tools: Evidence[] = [
+    { ref: 'E1', kind: 'tool', label: 'Bash cat notes.md', full: 'command: cat notes.md\nOne real check had two FALSE flags, and both were wrong.', isCurrent: false, turnsAgo: 2 },
+    { ref: 'E2', kind: 'tool', label: 'Bash ls', full: 'command: ls\nREADME.md\nsrc', isCurrent: false, turnsAgo: 1 },
+  ]
+  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'one real check had two false flags', said: '' }], all: [...tools, SAID], today: '2026-11-20' })
+  expect(again).toContain('Passages picked for it: E1.')
+  expect(again).toContain('had two FALSE flags')
+})
+
+test('a long command keeps its own lines: what an answer reports from the middle of it reaches the judge', () => {
+  const body = [
+    '## What this changes',
+    ...Array.from({ length: 30 }, (_, i) => `- change ${i}: the importer and the gateway keep working as before`),
+    '## Not verified',
+    '- The real cost of the second call: 6,280 characters in the replay.',
+    ...Array.from({ length: 30 }, (_, i) => `- note ${i}: the importer and the gateway keep working as before`),
+  ].join('\n')
+  const answer = 'The description says the importer and the gateway keep working, and that the second call cost 6,280 characters in the replay.'
+  const msgs = [
+    { role: 'user', text: 'Write the description.', toolUses: [] },
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'a', tool: 'Bash', input: { command: `cat > pr.md <<'EOF'\n${body}\nEOF` }, text: '' }] },
+    { role: 'assistant', text: answer, toolUses: [] },
+  ] as SessionMessage[]
+  const seen = collect(msgs, answer)
+  const prompt = buildPrompt({ answer: seen.answer, tools: seen.tools, memory: [], user: seen.user, today: '2026-11-20' })
+  expect(prompt.split('<answer>')[0]).toContain('6,280 characters in the replay')
 })
