@@ -1,0 +1,6 @@
+{
+  "name": "mod-tool-groups",
+  "version": "0.1.0",
+  "description": "Folds a finished group of tool calls into one line that says what was done, and opens it on a press.",
+  "types": "./types/index.d.ts"
+}

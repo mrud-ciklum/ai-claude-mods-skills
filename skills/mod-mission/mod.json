@@ -1,0 +1,6 @@
+{
+  "order": 16,
+  "title": "Overview (Mission Control)",
+  "summary": "Everything in one place: context over time, limits, every session's runners on a timeline, sessions, Mac and PR - with charts",
+  "button": { "key": "mission", "label": "Overview" }
+}

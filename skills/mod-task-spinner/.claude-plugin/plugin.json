@@ -1,0 +1,6 @@
+{
+  "name": "mod-task-spinner",
+  "version": "0.1.0",
+  "description": "While a turn runs, the spinner says the task's current step and percent instead of its word.",
+  "types": "./types/index.d.ts"
+}

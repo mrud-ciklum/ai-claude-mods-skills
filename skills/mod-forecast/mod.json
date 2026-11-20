@@ -1,0 +1,5 @@
+{
+  "order": 3,
+  "title": "Context forecast",
+  "summary": "Steps left to auto-compact, a sparkline of the fill and what the last step took"
+}

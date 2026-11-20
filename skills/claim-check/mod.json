@@ -1,0 +1,9 @@
+{
+  "order": 17,
+  "title": "Claim check",
+  "summary": "After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt",
+  "settings": [
+    { "key": "model", "label": "Model", "options": "models", "default": "sonnet" },
+    { "key": "effort", "label": "Effort", "options": ["low", "medium", "high", "xhigh", "max"], "default": "low" }
+  ]
+}

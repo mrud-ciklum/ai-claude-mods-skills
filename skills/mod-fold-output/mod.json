@@ -1,0 +1,5 @@
+{
+  "order": 12,
+  "title": "Fold long output",
+  "summary": "Long command output folds to a few lines and a \"show all\" button"
+}

@@ -1,0 +1,100 @@
+# claude-mods-skills
+
+Claude Code mods and skills.
+
+- **Mods:** a band of readings above the prompt (context, limits, forecast, the Mac, git), a
+  Mods panel that turns each one on and off, and `claim-check`, which has a second model check
+  every answer's claims against the session's evidence.
+- **Skills:** `arch-atlas`, which builds a verified, code-anchored map of a project's
+  architecture.
+
+Each folder under `skills/` is one mod or one skill. Claude Code loads every folder in
+`~/.claude/skills/`: a mod (it has a `.claude-plugin/plugin.json`) as a plugin, a skill (it has
+a `SKILL.md`) as a skill. Installing means linking these folders there.
+
+## The mods
+
+| # | Folder | Title | What it does |
+| --- | --- | --- | --- |
+| 0 | `mods` | Mods | This panel: turns mods on and off in every session |
+| 1 | `context-band` | Context band | Context, Compact, the task and runners above the prompt |
+| 2 | `mod-limits` | Subscription limits | The 5-hour and weekly limits: how much is used and when they reset |
+| 3 | `mod-forecast` | Context forecast | Steps left to auto-compact, a sparkline of the fill and what the last step took |
+| 4 | `mod-sessions` | Sessions | Every live session: task, context, who waits for you; a report, a summary and what happened while you were away |
+| 5 | `mod-machine` | Mac | Free memory and agent slots from the launch gate, free disk space |
+| 6 | `mod-git` | Git and PR | The branch, its changes, how far ahead and behind; the branch's PR with checks, review and comments |
+| 7 | `mod-quiet-tools` | Quiet service calls | Hides task_progress and runner_info calls from the conversation: the band shows them anyway |
+| 8 | `mod-tool-groups` | Tool groups in one line | "read 6 files · 2 searches · 1 command" instead of a column of rows; a click opens it |
+| 9 | `mod-runner-cards` | Runner cards | A background launch shows as a card with its live state and a progress bar |
+| 10 | `mod-turn-stats` | Turn summary | Under each answer: how long the turn took, the context it added and the tools it ran |
+| 11 | `mod-task-spinner` | Spinner with the task step | While the model works, the spinner shows the task step and percent |
+| 12 | `mod-fold-output` | Fold long output | Long command output folds to a few lines and a "show all" button |
+| 13 | `mod-compact-marks` | Compact marks | After a compaction, the context before and after: "context 82% → 31%" |
+| 14 | `mod-prompt-hints` | Prompt hints | Under the prompt: "context 82% - press Compact", "2 sessions waiting for you", "runner died" |
+| 15 | `mod-mode-badge` | Mode badge | One colored badge by the prompt: model, effort and session modes |
+| 16 | `mod-mission` | Overview (Mission Control) | Everything in one place: context over time, limits, every session's runners on a timeline, sessions, Mac and PR - with charts |
+| 17 | `claim-check` | Claim check | After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt |
+
+The band mods (2 to 6, 16) draw inside the `context-band` row, so keep `context-band`
+installed and on.
+
+## The skills
+
+| Folder | What it does |
+| --- | --- |
+| `arch-atlas` | Builds a grounded, interactive atlas of a project's architecture, from input to output: a code-anchored knowledge base and a single-file HTML map. Use it to map, teach or document a whole system, or to re-check an atlas after the code changed. |
+
+Skills have no `mod.json`, so the Mods panel does not list them.
+
+## Requirements
+
+- Claude Code with hooks-module mods. Tested on Claude Code 2.1.326.
+- macOS for `mod-machine` (it runs `memory_pressure` and `df`).
+- `git` for `mod-git`; `gh`, signed in, for its pull request line.
+
+## Install
+
+```bash
+git clone https://github.com/mrud-ciklum/claude-mods-skills.git ~/code/claude-mods-skills
+```
+
+```bash
+~/code/claude-mods-skills/install.sh
+```
+
+`install.sh` links each folder of `skills/` (mods and skills alike) into `~/.claude/skills/`. A real folder of the
+same name already there is moved first to `~/.claude/mods-backup-<date-time>/`, outside the
+skills folder, so it does not load. Then start a new Claude Code session.
+
+Your switches and settings in `~/.claude/mods/` are kept as they are. Type `/mods` to open
+the Mods panel.
+
+## Update
+
+```bash
+cd ~/code/claude-mods-skills && git pull
+```
+
+The links point into the clone, so a pull updates every mod and skill; start a new session to load them.
+
+## Develop
+
+Edit a mod or skill in the clone. A session that has the mod loaded reloads it at the end of the turn
+that changed its files.
+
+```bash
+cd ~/code/claude-mods-skills/skills/claim-check && claude plugin validate . && claude plugin test .
+```
+
+Every mod passes its tests except `context-band`, which has 2 failing tests from before
+these changes; their cause was not looked into.
+
+## claim-check
+
+- One extra model call per answer of 150 characters or more, on your account. Its README
+  measured 7,000 to 10,000 input tokens and about 3 seconds per check on Sonnet.
+- It sends the judge excerpts of the session's tool output, your prompts, `CLAUDE.md` and up to
+  4 memory notes.
+- The model and effort are picked under its row in the Mods panel; turn it off there too.
+
+See `skills/claim-check/README.md` for the details.

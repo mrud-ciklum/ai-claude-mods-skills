@@ -1,0 +1,6 @@
+{
+  "name": "mod-mode-badge",
+  "version": "0.1.0",
+  "description": "Shows the model, the reasoning effort and the session's modes as one coloured badge in the prompt footer.",
+  "types": "./types/index.d.ts"
+}

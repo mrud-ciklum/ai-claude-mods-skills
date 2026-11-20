@@ -1,0 +1,6 @@
+{
+  "name": "mod-limits",
+  "version": "0.1.0",
+  "description": "Shows the subscription rate-limit windows above the prompt: how much of the five-hour and weekly limits is used and when each resets.",
+  "types": "./types/index.d.ts"
+}

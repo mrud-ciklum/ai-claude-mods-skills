@@ -1,0 +1,36 @@
+{
+  "name": "claim-check",
+  "version": "0.7.1",
+  "description": "After each answer, a second model sorts its claims by what backs them (this turn's tool output, an earlier turn, memory, reasoning, nothing), with every cited quote checked in code",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoCorrect": {
+      "type": "boolean",
+      "title": "Auto-correct contradictions",
+      "description": "Off by default. When on, a claim the evidence contradicts sends one correction prompt unasked (at most one per prompt of yours).",
+      "default": false
+    },
+    "judgeModel": {
+      "type": "string",
+      "title": "Judge model",
+      "description": "The model that checks each answer. sonnet is the default; haiku is faster and misses more; opus is slower and stricter. A model picked in the Mods panel wins over this.",
+      "default": "sonnet",
+      "options": [
+        "sonnet",
+        "haiku",
+        "opus"
+      ]
+    },
+    "timingLog": {
+      "type": "string",
+      "title": "Timing log",
+      "description": "What is written to ~/.claude/claim-check-timings.jsonl (the last 200 lines are kept). summary: one line per check with its timings and verdict counts. stages: a line at each step too, to find where a check hangs. off: nothing.",
+      "default": "summary",
+      "options": [
+        "off",
+        "summary",
+        "stages"
+      ]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "mod-compact-marks",
+  "version": "0.1.0",
+  "description": "Says how full the context was before and after each compaction: under /compact's output, and in a toast for an automatic one.",
+  "types": "./types/index.d.ts"
+}

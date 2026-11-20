@@ -1,0 +1,6 @@
+{
+  "name": "mod-forecast",
+  "version": "0.1.0",
+  "description": "Forecasts the context window above the prompt: steps left to auto-compaction, a sparkline of the fill, and what the last step added.",
+  "types": "./types/index.d.ts"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "mod-runner-cards",
+  "version": "0.1.0",
+  "description": "Draws a background launch in the conversation as a card with the runner's live state and progress, read from the band's registry.",
+  "types": "./types/index.d.ts"
+}
