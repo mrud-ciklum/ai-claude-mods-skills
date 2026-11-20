@@ -707,10 +707,11 @@ export function doubted(reply: string, all: readonly Evidence[]): Doubt[] {
   })
 }
 
-// The second look reads at most this: eight claims, three passages each, cut to the claim's words.
-// A passage is picked when the claim's words it holds weigh enough: one word found in at most
-// `rareIn` passages, or several commoner ones that add up to as much.
-export const SECOND_BUDGET = { claims: 8, perClaim: 3, per: 800, total: 16_000, rareIn: 3 }
+// The second look reads at most this: eight claims, each with up to two passages of this turn and
+// two older ones, cut to the claim's words. An older passage is picked when the claim's words it
+// holds weigh enough: one word found in at most `rareIn` passages, or several commoner ones that
+// add up to as much.
+export const SECOND_BUDGET = { claims: 8, ofTurn: 2, older: 2, per: 800, total: 16_000, rareIn: 3 }
 
 // The words a claim is looked up by, in lower case: every word of four letters
 // or more and every number of two digits or more. Looser than `tokens`: a
@@ -734,19 +735,32 @@ export function claimWords(text: string): string[] {
 export function buildSecondPrompt(args: { doubts: readonly Doubt[]; all: readonly Evidence[]; today: string }): string | null {
   const pool = args.all.filter(e => e.kind !== 'user')
   const lower = new Map(pool.map(e => [e, e.full.toLowerCase()] as const))
-  const picked = new Map<Evidence, { words: Set<string>; text?: string }>()
+  const textOf = (e: Evidence) => lower.get(e) ?? ''
+  // An answer mostly reports what its own turn did, so this turn's calls are searched apart
+  // from the rest: among few passages a common word still tells them apart.
+  const ofTurn = pool.filter(e => e.isCurrent)
+  const older = pool.filter(e => !e.isCurrent)
+  const picked = new Map<Evidence, { words: Set<string>; claims: number; text?: string }>()
   const tops = args.doubts.slice(0, SECOND_BUDGET.claims).map(d => {
-    // The claim as the judge put it gives the words; the answer's own wording adds only its
-    // numbers, names and paths. Its plain words are in the answer's language, and rare there:
-    // they would pick whatever else was written in that language, not the evidence.
-    const toks = [...new Set([...claimWords(d.claim), ...tokens(d.said).map(t => t.toLowerCase())])]
-    const top = ranked(pool, toks, e => lower.get(e) ?? '')
-      .filter(x => x.score >= 1 / SECOND_BUDGET.rareIn)
-      .slice(0, SECOND_BUDGET.perClaim)
-      .map(x => x.e)
+    // The claim as the judge put it gives the words, and so does the answer's own wording.
+    // Among older passages the answer's plain words are left out (its numbers, names and paths
+    // stay): they are in the answer's language, rare there, and would pick whatever else was
+    // written in it, such as the model's own drafts.
+    const strict = [...new Set([...claimWords(d.claim), ...tokens(d.said).map(t => t.toLowerCase())])]
+    const loose = [...new Set([...strict, ...claimWords(d.said)])]
+    const top = [
+      ...ranked(ofTurn, loose, textOf)
+        .filter(x => x.hits > 0)
+        .slice(0, SECOND_BUDGET.ofTurn),
+      ...ranked(older, strict, textOf)
+        .filter(x => x.score >= 1 / SECOND_BUDGET.rareIn)
+        .slice(0, SECOND_BUDGET.older),
+    ].map(x => x.e)
+    const toks = loose
     for (const e of top) {
-      const entry = picked.get(e) ?? { words: new Set<string>() }
+      const entry = picked.get(e) ?? { words: new Set<string>(), claims: 0 }
       for (const t of toks) entry.words.add(t)
+      entry.claims++
       picked.set(e, entry)
     }
 
@@ -756,7 +770,8 @@ export function buildSecondPrompt(args: { doubts: readonly Doubt[]; all: readonl
   // In the order they were picked, so the first claims get their passages when not all fit.
   let size = 0
   for (const [e, entry] of picked) {
-    const text = `${head(e)}\n${excerpt(e.full, [...entry.words], SECOND_BUDGET.per, true)}\n\n`
+    // A passage picked for several claims is cut less: each of them needs its lines of it.
+    const text = `${head(e)}\n${excerpt(e.full, [...entry.words], SECOND_BUDGET.per * Math.min(entry.claims, 3), true)}\n\n`
     if (size + text.length > SECOND_BUDGET.total) continue
     entry.text = text
     size += text.length

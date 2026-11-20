@@ -854,3 +854,20 @@ test('a long command keeps its own lines: what an answer reports from the middle
   const prompt = buildPrompt({ answer: seen.answer, tools: seen.tools, memory: [], user: seen.user, today: '2026-11-20' })
   expect(prompt.split('<answer>')[0]).toContain('6,280 characters in the replay')
 })
+
+test("the second look searches this turn's calls apart from the older ones", () => {
+  // Thirty older calls share every plain word of the claim, so none of those words is rare
+  // enough to pick a passage. The turn's own call holds the fact.
+  const older = Array.from({ length: 30 }, (_, i): Evidence => ({
+    ref: `E${i + 1}`,
+    kind: 'tool',
+    label: `Bash step ${i + 1}`,
+    full: `command: step ${i + 1}\nthe report flags were checked in step ${i + 1}`,
+    isCurrent: false,
+    turnsAgo: 2,
+  }))
+  const ofTurn: Evidence = { ref: 'E31', kind: 'tool', label: 'Bash cat summary.txt', full: 'command: cat summary.txt\nthe report flags were checked again: 3 of 3 pass', isCurrent: true, turnsAgo: 0 }
+  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'the report flags were checked', said: '' }], all: [...older, ofTurn, SAID], today: '2026-11-20' })
+  expect(again).toContain('Passages picked for it: E31.')
+  expect(again).toContain('checked again: 3 of 3 pass')
+})
