@@ -2,10 +2,10 @@
 export type Verdict =
   | 'contradicted' // the evidence says otherwise
   | 'unverified' // nothing behind it, or the judge's quote was not found
-  | 'stale' // backed only by a read made before a later change, or an old note about something that changes
+  | 'stale' // backed only by a read made before a later change, an old note about something that changes, or the summary for such a fact
   | 'assumed' // relied on, never stated or checked
   | 'inferred' // follows from evidence by reasoning, not observed
-  | 'memory' // from a memory note or CLAUDE.md
+  | 'memory' // from a memory note, CLAUDE.md, or the summary a compaction left (a fact that does not change)
   | 'earlier' // from an earlier turn's tool output, or the user's own words
   | 'backed' // stated by this turn's tool output
 
@@ -26,13 +26,26 @@ export type Check = {
   settled: number // claims this turn's evidence states outright: counted by the judge, not listed
   error?: string
   // Where the time went, for the pane, and the judge's model and effort (absent in older checks).
-  stats?: { gatherSeconds: number; judgeSeconds: number; promptChars: number; replyTokens: number; isCut: boolean; model?: string; effort?: string }
+  // `lookedAgain` claims went to the second look (a search of the whole session by the claim's own
+  // words); `foundAgain` of them came back with support. Both absent when there was no second look.
+  stats?: {
+    gatherSeconds: number
+    judgeSeconds: number
+    promptChars: number
+    replyTokens: number
+    isCut: boolean
+    model?: string
+    effort?: string
+    lookedAgain?: number
+    foundAgain?: number
+  }
   // The flagged claims were already handed to the model (next prompt, Verify, or auto-correction).
   isFedBack: boolean
 }
 
 // The judge's model and effort as picked in the Mods panel; absent, the Judge model setting and low.
-export type Picks = { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' }
+// `secondLook: false` when the panel switches the second look off; absent, it is on.
+export type Picks = { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'; secondLook?: false }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -48,6 +61,10 @@ declare module 'claude-code' {
       isOwnTurn: boolean
       // The judge's model and effort picked in the Mods panel, read from ~/.claude/mods/state.json.
       picks: Picks
+      // The transcript's last row when the running turn began; null when it could not be read.
+      turnStart: { turnId: string; uuid: string } | null
+      // The folder under the config folder that holds this session's transcript, once found.
+      sessionFolder: { session: string; dir: string } | null
     }
   }
 }

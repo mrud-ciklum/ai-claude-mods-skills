@@ -4,6 +4,7 @@
   "summary": "After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt",
   "settings": [
     { "key": "model", "label": "Model", "options": "models", "default": "sonnet" },
-    { "key": "effort", "label": "Effort", "options": ["low", "medium", "high", "xhigh", "max"], "default": "low" }
+    { "key": "effort", "label": "Effort", "options": ["low", "medium", "high", "xhigh", "max"], "default": "low" },
+    { "key": "secondLook", "label": "Second look", "options": ["on", "off"], "default": "on" }
   ]
 }
