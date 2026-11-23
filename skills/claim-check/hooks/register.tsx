@@ -85,7 +85,7 @@ const shown = (c: Claim) => (c.said ? `"${c.said}"` : c.claim)
 const LEGEND: [Verdict, string][] = [
   ['contradicted', 'the evidence says otherwise'],
   ['unverified', 'nothing in the session backs it, or the judge cited a passage that is not there'],
-  ['stale', 'backed only by a read made before the file changed, or by an old memory note'],
+  ['stale', 'backed only by a read made before the file changed, by an old memory note, or (a fact that can change) by the summary a compaction left'],
   ['assumed', 'the answer relies on it but never states or checks it'],
   ['inferred', 'follows from the evidence by reasoning; nothing states it'],
   ['memory', "from a memory note, CLAUDE.md, or the summary a compaction left of the session's earlier part"],
@@ -93,7 +93,7 @@ const LEGEND: [Verdict, string][] = [
   ['backed', "stated by this turn's tool output; counted, not listed"],
 ]
 
-const VERSION = '0.9.1'
+const VERSION = '0.9.2'
 // What the row says when a reload of this mod cut a check short.
 const INTERRUPTED = 'This answer was not checked: claim-check restarted before it finished, because its code had just been changed.'
 export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home folder; the last 200 lines
@@ -316,7 +316,14 @@ export const register: Register = (on, options) => {
       // in the whole session by their own words, and the judge is asked about those
       // alone. A second call that fails changes nothing.
       const firstAnswered = await $.clock.now()
-      const doubts = r.isAnswered ? doubted(r.text, all).slice(0, SECOND_BUDGET.claims) : []
+      // Not for a minor claim: it is never handed to the next prompt, so a second call for it buys nothing.
+      // Nor when the second look is switched off in the Mods panel.
+      const doubts =
+        r.isAnswered && pick.secondLook !== false
+          ? doubted(r.text, all)
+              .filter(d => d.priority < 3)
+              .slice(0, SECOND_BUDGET.claims)
+          : []
       const again = doubts.length > 0 ? buildSecondPrompt({ doubts, all, today }) : null
       if (again !== null) await stage('asking again', { claims: doubts.length, promptChars: again.length })
       const r2 = again === null ? undefined : await $.model.complete({ model, system: SECOND, prompt: again, maxTokens: SECOND_REPLY, effort, timeoutMs: 60_000 })
@@ -660,13 +667,14 @@ async function refreshSwitch($: EngineInterface): Promise<boolean> {
   }
 }
 // This mod's choices in the switches file (the Mods panel writes them under
-// `modSettings`): the judge's model, and its effort when it is one of the five levels.
+// `modSettings`): the judge's model, its effort when it is one of the five levels, and
+// whether unsupported claims get a second look (on unless switched off).
 function picksIn(value: unknown): Picks {
   const all = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const mine = typeof all[NAME] === 'object' && all[NAME] !== null ? (all[NAME] as Record<string, unknown>) : {}
   const model = typeof mine.model === 'string' && mine.model.trim() !== '' ? mine.model.trim() : undefined
   const effort = EFFORTS.find(level => level === mine.effort)
 
-  return { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }) }
+  return { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }), ...(mine.secondLook === 'off' ? { secondLook: false } : {}) }
 }
 // ---- end of mods switch ----

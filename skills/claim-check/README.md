@@ -19,10 +19,10 @@ The second line names the claim that matters most. Quoted text is the answer's o
 | --- | --- |
 | contradicted | The evidence says otherwise. |
 | unverified | Nothing in the session supports it, or the judge cited a passage that is not there. |
-| stale | Backed only by a read made before the file changed, or by an old memory note about something that changes. |
+| stale | Backed only by a read made before the file changed, by an old memory note about something that changes, or by the summary a compaction left when the fact can change. |
 | assumed | The answer relies on it but never states or checks it. |
 | inferred | It follows from evidence by reasoning; nothing states it. |
-| memory | From a memory note or `CLAUDE.md`. |
+| memory | From a memory note or `CLAUDE.md`, or from the summary a compaction left when the fact cannot change. |
 | earlier | From an earlier turn's tool output, or your own words. |
 | backed | Stated by this turn's tool output. Counted, not listed. |
 
@@ -35,17 +35,17 @@ Each listed claim is also rated key, normal or minor. Key means you are likely t
 
 ## How it works
 
-1. When a turn ends, the mod gathers the session's tool calls, your prompts, `CLAUDE.md`, the memory index and the memory notes closest to the answer. If the session was compacted, the summary it left counts as evidence of its own kind: a claim only the summary states shows as `memory`, not as unverified.
+1. When a turn ends, the mod gathers the session's tool calls, your prompts, `CLAUDE.md`, the memory index and the memory notes closest to the answer. If the session was compacted, the summary it left counts as evidence of its own kind: a claim only the summary states shows as `memory`, or as `stale` when the fact can change, not as unverified.
 2. It cuts that down to about 59,000 characters. Every tool call of the turn gets a share (short outputs whole, long ones cut to the lines that share the answer's rarest words plus their head and tail; a call's input keeps its own line breaks, so a long command or a file written through one is cut by lines too). Of older calls it keeps those that hold the answer's rare words (a word found in few calls weighs more, so the model's own drafts, which repeat the answer, do not crowd out the sources), and the newest eight whatever they say.
 3. A judge model says how each claim relates to a passage and quotes 3 to 8 words from it.
-4. Claims the judge found no support for get a second look. For each, the mod searches every tool call of the session by the claim's own words (any word of four letters or more, whatever the case, plus the answer's wording), this turn's calls apart from the older ones, and asks the judge once more about those claims alone, with up to two passages of this turn and two older ones for each. The first pass reads a cut-down view chosen by the whole answer, so a passage that backs one claim can be missing from it.
+4. Claims the judge found no support for get a second look, unless they are minor or the second look is switched off. It looks for support only and never adds a contradiction. For each, the mod searches every tool call of the session by the claim's own words (any word of four letters or more, whatever the case, plus the answer's wording), this turn's calls apart from the older ones, and asks the judge once more about those claims alone, with up to two passages of this turn and two older ones for each. The first pass reads a cut-down view chosen by the whole answer, so a passage that backs one claim can be missing from it.
 5. Code, not the judge, does the rest. It checks that each quote is really in the cited evidence, works out where the evidence came from and how old it is, and marks a read as stale when the file was changed afterwards (by an edit or a shell command) and the quoted line is gone.
 
 The check runs after the answer is shown, so it never delays a reply.
 
 ## What it sends and what it costs
 
-Each check is one extra model call on your own account, and a second, smaller one when the first leaves claims without support (up to about 16,000 characters). It sends the judge:
+Each check is one extra model call on your own account, and a second, smaller one when the first leaves claims that are not minor without support (up to about 10,000 characters; switch it off under Second look in the Mods panel). It sends the judge:
 
 - excerpts of the session's tool output (file contents, command output)
 - your prompts in the session
@@ -61,6 +61,7 @@ Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,00
 | Judge model | sonnet | haiku is faster and misses more; opus is slower and stricter. |
 | Model (Mods panel) | Judge model | Picked under the mod's row in the Mods panel: an alias the /config menu offers (`sonnet (latest)` follows each new version), or a full model id such as `claude-sonnet-5-5` to pin one. Wins over Judge model. |
 | Effort (Mods panel) | low | The judge's reasoning effort: low, medium, high, xhigh or max. Higher is slower and costs more. |
+| Second look (Mods panel) | on | Whether claims left without support are looked up in the whole session and judged once more. Off saves the second model call. |
 | Auto-correct contradictions | off | When on, a contradicted claim sends one correction prompt unasked. |
 | Timing log | summary | Writes one line per check to `~/.claude/claim-check-timings.jsonl`, and the last four checks as the judge saw them (the prompts, the replies, the verdicts) to `~/.claude/claim-check-last.json`. `stages` adds a line per step; `off` writes neither. |
 

@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { ModelCompleteResult, On, SessionMessage } from 'claude-code'
 
-import { amend, bashChanges, buildPrompt, buildSecondPrompt, citedStaleFiles, clip, collect, doubted, parseReply, SECOND, settledCount, excerpt, resolve, tokens } from './judge'
+import { amend, bashChanges, buildPrompt, buildSecondPrompt, citedStaleFiles, clip, collect, doubted, parseReply, SECOND, settledCount, SYSTEM, excerpt, resolve, tokens } from './judge'
 import type { Evidence } from './judge'
 
 declare const setTimeout: (f: (v?: unknown) => void, ms: number) => unknown
@@ -660,11 +660,14 @@ test("the summary a compaction leaves is evidence of its own: recalled, not the 
   expect(prompt).toContain("[S | the session's summary of its earlier part | left by a compaction]")
   expect(prompt).toContain('The registry folder holds 65 files.')
 
-  // A claim only the summary states is recalled, like a note: it is not handed on as unverified.
-  const judged = '{"ok":0,"claims":[{"c":"the registry holds 65 files","a":"","s":"d","r":"S","q":"registry folder holds 65 files","v":1,"p":2}]}'
-  const claims = resolve(judged, [...seen.tools, seen.user, ...(seen.summary ? [seen.summary] : [])], undefined, seen.answer)
-  expect(claims?.[0]?.verdict).toBe('memory')
-  expect(claims?.[0]?.source).toBe('the session\'s summary of its earlier part: "registry folder holds 65 files"')
+  // A claim only the summary states is recalled, like a note, when the fact cannot change...
+  const all = [...seen.tools, seen.user, ...(seen.summary ? [seen.summary] : [])]
+  const judged = (v: 0 | 1) => `{"ok":0,"claims":[{"c":"the registry holds 65 files","a":"","s":"d","r":"S","q":"registry folder holds 65 files","v":${v},"p":2}]}`
+  const fixed = resolve(judged(0), all, undefined, seen.answer)
+  expect(fixed?.[0]?.verdict).toBe('memory')
+  expect(fixed?.[0]?.source).toBe('the session\'s summary of its earlier part: "registry folder holds 65 files"')
+  // ...and stale when it can: it was true when the summary was written, and nothing since says it still is.
+  expect(resolve(judged(1), all, undefined, seen.answer)?.[0]?.verdict).toBe('stale')
 })
 
 test('each check leaves what the judge saw in a file, to answer why a claim was flagged', async ($, on) => {
@@ -755,7 +758,7 @@ test('a claim the first pass found nothing for is looked up in the whole session
     '{"c":"the importer is a Worker","a":"","s":"d","r":"E2","q":"The importer is a Worker in Python","v":0,"p":2}]}'
   const all = [...tools, SAID]
   const doubts = doubted(judged, all)
-  expect(doubts).toEqual([{ at: 0, claim: 'B22 and B23 labels come from Roadmap lines 222-223', said: '«B22» і «B23» - Roadmap, рядки 222-223.' }])
+  expect(doubts).toEqual([{ at: 0, claim: 'B22 and B23 labels come from Roadmap lines 222-223', said: '«B22» і «B23» - Roadmap, рядки 222-223.', priority: 2 }])
 
   // ...and the second look puts the source in front of the judge, cut to the claim's words.
   const again = buildSecondPrompt({ doubts, all, today: '2026-11-20' }) ?? ''
@@ -769,13 +772,17 @@ test('a claim the first pass found nothing for is looked up in the whole session
   expect(claims?.[0]?.source).toContain('Bash grep -n B2 roadmap.md, 3 turn(s) ago')
   expect(claims?.[1]?.verdict).toBe('earlier') // the claim that had support keeps it
 
+  // The second look finds support only: a passage it reads as saying otherwise changes nothing.
+  const against = amend(judged, '{"claims":[{"n":1,"s":"x","r":"E1","q":"222: | **B22** | Importer for the nightly"}]}', doubts)
+  expect(resolve(against, all, undefined, answer)?.[0]?.verdict).toBe('unverified')
+
   // A quote that is not in the passage, or a second "nothing", leaves the claim unverified.
   const misquoted = amend(judged, '{"claims":[{"n":1,"s":"d","r":"E1","q":"lines 222 and 223 say so"}]}', doubts)
   expect(resolve(misquoted, all, undefined, answer)?.[0]?.verdict).toBe('unverified')
   expect(resolve(amend(judged, '{"claims":[{"n":1,"s":"n","r":"","q":""}]}', doubts), all, undefined, answer)?.[0]?.verdict).toBe('unverified')
 
   // With no passage sharing a word with the claim there is nothing to ask.
-  expect(buildSecondPrompt({ doubts: [{ at: 0, claim: 'the deploy is green', said: '' }], all, today: '2026-11-20' })).toBeNull()
+  expect(buildSecondPrompt({ doubts: [{ at: 0, claim: 'the deploy is green', said: '', priority: 2 }], all, today: '2026-11-20' })).toBeNull()
 })
 
 const UNSUPPORTED =
@@ -831,7 +838,7 @@ test('a claim of short common words still finds its passage, whatever the case',
     { ref: 'E1', kind: 'tool', label: 'Bash cat notes.md', full: 'command: cat notes.md\nOne real check had two FALSE flags, and both were wrong.', isCurrent: false, turnsAgo: 2 },
     { ref: 'E2', kind: 'tool', label: 'Bash ls', full: 'command: ls\nREADME.md\nsrc', isCurrent: false, turnsAgo: 1 },
   ]
-  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'one real check had two false flags', said: '' }], all: [...tools, SAID], today: '2026-11-20' })
+  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'one real check had two false flags', said: '', priority: 2 }], all: [...tools, SAID], today: '2026-11-20' })
   expect(again).toContain('Passages picked for it: E1.')
   expect(again).toContain('had two FALSE flags')
 })
@@ -867,7 +874,57 @@ test("the second look searches this turn's calls apart from the older ones", () 
     turnsAgo: 2,
   }))
   const ofTurn: Evidence = { ref: 'E31', kind: 'tool', label: 'Bash cat summary.txt', full: 'command: cat summary.txt\nthe report flags were checked again: 3 of 3 pass', isCurrent: true, turnsAgo: 0 }
-  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'the report flags were checked', said: '' }], all: [...older, ofTurn, SAID], today: '2026-11-20' })
+  const again = buildSecondPrompt({ doubts: [{ at: 0, claim: 'the report flags were checked', said: '', priority: 2 }], all: [...older, ofTurn, SAID], today: '2026-11-20' })
   expect(again).toContain('Passages picked for it: E31.')
   expect(again).toContain('checked again: 3 of 3 pass')
+})
+
+test("both of the judge's prompts say that the assistant's own input proves nothing about the world", () => {
+  const rule = 'text the assistant put into a file or a command is not evidence for that text'
+  expect(SYSTEM).toContain(rule)
+  expect(SECOND).toContain(rule)
+  // The second look is told to look for support only.
+  expect(SECOND).not.toContain('"x"')
+})
+
+test('a minor claim gets no second look, and none is made when it is switched off in the Mods panel', async ($, on) => {
+  let off = false
+  const calls: string[] = []
+  const minorOnly = '{"ok":3,"claims":[{"c":"the timeout in c.yml is 60 seconds","a":"","s":"n","r":"","q":"","v":1,"p":3}]}'
+  const switches = '/home/u/.claude/mods/state.json'
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('fs.exists', (_, e) => ({ value: e.path === switches }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: 80, mtimeMs: off ? 2 : 1, isLink: false } }))
+  on('fs.read', (_, e) =>
+    e.path === switches ? { value: JSON.stringify({ off: [], modSettings: { 'claim-check': off ? { secondLook: 'off' } : {} } }) } : { deny: 'no such file' },
+  )
+  on('clock.now', () => ({ value: Date.parse('2026-11-23') }))
+  on('session.messages', () => ({ value: MESSAGES }))
+  let first = minorOnly
+  on('model.complete', (_, e) => {
+    calls.push(e.system === SECOND ? 'second' : 'first')
+
+    return reply(e.system === SECOND ? '{"claims":[{"n":1,"s":"d","r":"E3","q":"timeout: 60"}]}' : first)
+  })
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  // A minor claim alone: one call.
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+  expect(calls).toEqual(['first'])
+
+  // Claims that matter: two calls.
+  first = UNSUPPORTED
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T2', reason: 'answer' })
+  await settle()
+  expect(calls).toEqual(['first', 'first', 'second'])
+
+  // Switched off in the panel: one call again.
+  off = true
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T3', reason: 'answer' })
+  await settle()
+  expect(calls).toEqual(['first', 'first', 'second', 'first'])
 })

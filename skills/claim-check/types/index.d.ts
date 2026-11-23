@@ -2,10 +2,10 @@
 export type Verdict =
   | 'contradicted' // the evidence says otherwise
   | 'unverified' // nothing behind it, or the judge's quote was not found
-  | 'stale' // backed only by a read made before a later change, or an old note about something that changes
+  | 'stale' // backed only by a read made before a later change, an old note about something that changes, or the summary for such a fact
   | 'assumed' // relied on, never stated or checked
   | 'inferred' // follows from evidence by reasoning, not observed
-  | 'memory' // from a memory note, CLAUDE.md, or the summary a compaction left of the session's earlier part
+  | 'memory' // from a memory note, CLAUDE.md, or the summary a compaction left (a fact that does not change)
   | 'earlier' // from an earlier turn's tool output, or the user's own words
   | 'backed' // stated by this turn's tool output
 
@@ -44,7 +44,8 @@ export type Check = {
 }
 
 // The judge's model and effort as picked in the Mods panel; absent, the Judge model setting and low.
-export type Picks = { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' }
+// `secondLook: false` when the panel switches the second look off; absent, it is on.
+export type Picks = { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'; secondLook?: false }
 
 declare module 'claude-code' {
   interface PluginState {
