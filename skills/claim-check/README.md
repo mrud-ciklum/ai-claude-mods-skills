@@ -38,10 +38,10 @@ Each listed claim is also rated key, normal or minor. Key means you are likely t
 1. When a turn ends, the mod gathers the session's tool calls, your prompts, `CLAUDE.md`, the memory index and the memory notes closest to the answer. If the session was compacted, the summary it left counts as evidence of its own kind: a claim only the summary states shows as `memory`, or as `stale` when the fact can change, not as unverified.
 2. It cuts that down to about 59,000 characters. Every tool call of the turn gets a share (short outputs whole, long ones cut to the lines that share the answer's rarest words plus their head and tail; a call's input keeps its own line breaks, so a long command or a file written through one is cut by lines too). Of older calls it keeps those that hold the answer's rare words (a word found in few calls weighs more, so the model's own drafts, which repeat the answer, do not crowd out the sources), and the newest eight whatever they say.
 3. A judge model says how each claim relates to a passage and quotes 3 to 8 words from it.
-4. Claims the judge found no support for get a second look, unless they are minor or the second look is switched off. It looks for support only and never adds a contradiction. For each, the mod searches every tool call of the session by the claim's own words (any word of four letters or more, whatever the case, plus the answer's wording), this turn's calls apart from the older ones, and asks the judge once more about those claims alone, with up to two passages of this turn and two older ones for each. The first pass reads a cut-down view chosen by the whole answer, so a passage that backs one claim can be missing from it.
+4. Claims the judge found no support for get a second look, unless they are minor or the second look is switched off. It looks for support only and never adds a contradiction. For each, the mod searches every tool call of the session by the claim's own words (any word of four letters or more that says something, whatever the case, plus the answer's wording; a word counts where a word of the passage starts with it, so `flag` finds `flags` and `main` does not find `remain`), this turn's calls apart from the older ones, and asks the judge once more about those claims alone, with up to two passages of this turn and two older ones for each. The first pass reads a cut-down view chosen by the whole answer, so a passage that backs one claim can be missing from it.
 5. Code, not the judge, does the rest. It checks that each quote is really in the cited evidence, works out where the evidence came from and how old it is, and marks a read as stale when the file was changed afterwards (by an edit or a shell command) and the quoted line is gone.
 
-The check runs after the answer is shown, so it never delays a reply.
+The check runs after the answer is shown, so it never delays a reply. Only the transcript is read before the turn is handed back (13 ms as a rule, 78 ms at most in 145 logged checks), so that a prompt queued behind the turn cannot mix its rows into the check.
 
 ## What it sends and what it costs
 
@@ -63,11 +63,13 @@ Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,00
 | Effort (Mods panel) | low | The judge's reasoning effort: low, medium, high, xhigh or max. Higher is slower and costs more. |
 | Second look (Mods panel) | on | Whether claims left without support are looked up in the whole session and judged once more. Off saves the second model call. |
 | Auto-correct contradictions | off | When on, a contradicted claim sends one correction prompt unasked. |
-| Timing log | summary | Writes one line per check to `~/.claude/claim-check-timings.jsonl`, and the last four checks as the judge saw them (the prompts, the replies, the verdicts) to `~/.claude/claim-check-last.json`. `stages` adds a line per step; `off` writes neither. |
+| Timing log | summary | Writes one line per check to `~/.claude/claim-check-timings.jsonl`, and the project's last four checks as the judge saw them (the prompts, the replies, the verdicts) to `claim-check-last.json` in the project's folder under `~/.claude/projects/`. `stages` adds a line per step; `off` writes neither. |
 
 ## Why was this flagged?
 
-Open `~/.claude/claim-check-last.json`. It holds the last four checks of all your sessions, newest first. Each names its session and folder and carries the exact prompt the judge read (so you can see whether the passage was there), its reply, the second look's prompt and reply when there was one, and the verdicts the code made of them. The file holds excerpts of your sessions, like the transcripts do.
+Open `claim-check-last.json` in the project's own folder under `~/.claude/projects/`: the folder that holds the session's transcripts, named after the path the session started in (`~/.claude/projects/-Users-me-code-app/` for `/Users/me/code/app`). It holds the project's last four checks, newest first. Each names its session and folder and carries the exact prompt the judge read (so you can see whether the passage was there), its reply, the second look's prompt and reply when there was one, and the verdicts the code made of them.
+
+The file holds excerpts of the project's sessions, like the transcripts next to it, and nothing of any other project. Versions 0.9.0 to 0.9.2 kept one file for all projects, `~/.claude/claim-check-last.json`; it is no longer written and can be deleted.
 
 ## Limits
 
@@ -75,7 +77,8 @@ Open `~/.claude/claim-check-last.json`. It holds the last four checks of all you
 - At most 8 claims and 2 assumptions are listed per answer.
 - Trimming means the judge sometimes misses a passage that was there, and a true claim shows as unverified. In a turn with more than about 57 tool calls the oldest calls are left out.
 - What a compaction removed cannot be checked again: such claims rest on the summary alone.
-- The second look finds a passage by the claim's words. A claim that only follows from numbers in the output, or that the evidence puts in other words, is still not found. Nor is one in a session where every passage shares the same vocabulary: no word is rare enough to point at the right one.
+- The second look finds a passage by the claim's words. A claim that only follows from numbers in the output, or that the evidence puts in other words, is still not found. Nor is one in a session where every passage shares the same vocabulary: no word is rare enough to point at the right one. An output of more than 100,000 characters is searched by its head and tail only.
+- A prompt that begins with a notice of the engine (`<system-reminder>`) counts by the words after it; a new kind of notice in front of typed words would hide them.
 - Where a turn begins is taken from the engine when the turn starts. Without that (the mod loaded mid-turn), text the engine adds in your voice is told apart by how it starts (a skill's body, a command's output), and a new kind may be taken for a prompt.
 - Shell changes are detected from the command's text (redirects, `sed -i`, `mv`, `rm`, `cp` destinations, script writes, git commands that rewrite the tree). A name is made a full path where the command shows its folder (`cd /x && …`), a variable it set (`S=/tmp/x; … $S/a.ts`) or the home folder; otherwise its tail is compared. A formatter run on a whole directory is not seen.
 - Memory is found only while the session stays in or below the folder it started in.

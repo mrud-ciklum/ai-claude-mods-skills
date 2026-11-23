@@ -93,14 +93,15 @@ const LEGEND: [Verdict, string][] = [
   ['backed', "stated by this turn's tool output; counted, not listed"],
 ]
 
-const VERSION = '0.9.2'
+const VERSION = '0.9.3'
 // What the row says when a reload of this mod cut a check short.
 const INTERRUPTED = 'This answer was not checked: claim-check restarted before it finished, because its code had just been changed.'
 export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home folder; the last 200 lines
-// The last checks as the judge saw them (the prompts, the replies, the verdicts), newest first,
-// under the home folder: what answers "why was this flagged". Every session writes here, so each
-// check names its session. Written unless the log is off.
-export const LAST_CHECK = '.claude/claim-check-last.json'
+// The last checks as the judge saw them (the prompts, the replies, the verdicts), newest first:
+// what answers "why was this flagged". One file per project, in the session's own folder under
+// the config folder: a check holds excerpts of the session, and there they lie next to its
+// transcripts, not in a file every project's sessions share. Written unless the log is off.
+export const LAST_CHECK = 'claim-check-last.json'
 const LAST_CHECKS_KEPT = 4
 // off: nothing. summary: one line per check and per load. stages: a line at each step of a check too.
 let logMode = 'summary'
@@ -128,6 +129,20 @@ async function memoryDir($: EngineInterface, config: string, cwd: string): Promi
   }
 
   return undefined
+}
+
+// The session's own folder under the config folder: the one that holds its transcript. It is named
+// after the folder the session started in, and the working folder may have moved below it since,
+// so the working folder is tried first, then each folder above it.
+async function sessionDir($: EngineInterface, config: string, cwd: string, session: string): Promise<string> {
+  const named = (folder: string) => `${config}/projects/${folder.replace(/[^A-Za-z0-9]/g, '-')}`
+  let at = cwd
+  for (let i = 0; i < 12 && at !== '' && session !== ''; i++) {
+    if (await $.fs.exists(`${named(at)}/${session}.jsonl`).catch(() => false)) return named(at)
+    at = at.slice(0, at.lastIndexOf('/'))
+  }
+
+  return named(cwd)
 }
 
 const noteCache = new Map<string, { size: number; full: string }>()
@@ -283,19 +298,29 @@ export const register: Register = (on, options) => {
 
     const settle = (to: Check) => update($, last, cur => (cur?.turnId === turnId ? to : cur)) // a newer turn's check wins
 
-    // Runs after the hook returns, so the answer is never held up.
-    void (async () => {
+    // With the log set to "stages", a line per stage: if a check hangs, the last line says where.
+    const stage = (event: string, more: Record<string, unknown> = {}) =>
+      logTiming($, { version: VERSION, turnId, event, ...more }, 'stages').catch(() => undefined)
+    await stage('start', { answerChars: finalAnswer.length })
+    // The transcript as it stands when the turn ends, read before the hook returns: a queued
+    // prompt starts the next turn right after, and neither its rows nor where it began are this
+    // turn's. The read took 13 ms as a rule and 78 at most in 145 logged checks. One that fails
+    // is the check's failure, reported below like any other.
+    const snapshot = await (async () => {
       const now = await $.clock.now()
-      // With the log set to "stages", a line per stage: if a check hangs, the last line says where.
-      const stage = (event: string, more: Record<string, unknown> = {}) =>
-        logTiming($, { version: VERSION, turnId, event, ...more }, 'stages').catch(() => undefined)
-      await stage('start', { answerChars: finalAnswer.length })
       // The rows since the turn began, counted before the whole transcript is read.
       const begun = await read($, turnStart)
       const since = begun?.turnId === turnId ? await $.session.messages({ after: begun.uuid }).catch(() => undefined) : undefined
       const turnRows = since === undefined || 'deny' in since ? undefined : since.length
       const msgs = await $.session.messages()
-      const gotTranscript = await $.clock.now()
+
+      return { now, turnRows, msgs, gotTranscript: await $.clock.now() }
+    })().catch((error: unknown) => ({ error }))
+
+    // Runs after the hook returns, so the answer is held up by the read above alone.
+    void (async () => {
+      if ('error' in snapshot) throw snapshot.error
+      const { now, turnRows, msgs, gotTranscript } = snapshot
       await stage('transcript', { ms: gotTranscript - now, messages: 'deny' in msgs ? 'denied' : msgs.length, turnRows: turnRows ?? 'unknown' })
       const home = (await $.env.get('HOME').catch(() => undefined)) || undefined
       const { tools, user, summary: recap, answer } = collect('deny' in msgs ? [] : msgs, finalAnswer, home, turnRows)
@@ -382,12 +407,14 @@ export const register: Register = (on, options) => {
       }
       const claims = r.isAnswered ? resolve(reply, all, fresh, answer) : null
       if (claims && again !== null) stats.foundAgain = doubts.filter(d => claims[d.at] !== undefined && claims[d.at]?.verdict !== 'unverified').length
-      if (logMode !== 'off' && home) {
+      const cwd = logMode !== 'off' && home ? await $.session.cwd().catch(() => '') : ''
+      if (home && cwd !== '') {
+        const session = await $.session.id().catch(() => '')
         const seen = {
           at: new Date(now).toISOString(),
           version: VERSION,
-          session: await $.session.id().catch(() => ''),
-          cwd: await $.session.cwd().catch(() => ''),
+          session,
+          cwd,
           turnId,
           model,
           effort,
@@ -400,8 +427,9 @@ export const register: Register = (on, options) => {
           second: again === null ? null : { prompt: again, reply: r2?.isAnswered ? r2.text : (r2?.reason ?? '') },
           claims,
         }
-        const path = `${home}/${LAST_CHECK}`
-        // ponytail: read, then written whole; two sessions finishing a check at once can lose one entry.
+        const config = (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) || `${home}/.claude`
+        const path = `${await sessionDir($, config, cwd, session)}/${LAST_CHECK}`
+        // ponytail: read, then written whole; two sessions of one project finishing a check at once can lose one entry.
         const old: unknown = await $.fs
           .read(path)
           .then(text => JSON.parse(text) as unknown)
