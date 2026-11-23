@@ -69,7 +69,7 @@ Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,00
 
 Open `claim-check-last.json` in the project's own folder under `~/.claude/projects/`: the folder that holds the session's transcripts, named after the path the session started in (`~/.claude/projects/-Users-me-code-app/` for `/Users/me/code/app`). It holds the project's last four checks, newest first. Each names its session and folder and carries the exact prompt the judge read (so you can see whether the passage was there), its reply, the second look's prompt and reply when there was one, and the verdicts the code made of them.
 
-The file holds excerpts of the project's sessions, like the transcripts next to it, and nothing of any other project. Versions 0.9.0 to 0.9.2 kept one file for all projects, `~/.claude/claim-check-last.json`; it is no longer written and can be deleted.
+The file holds excerpts of the project's sessions, like the transcripts next to it, and nothing of any other project: a session writes only to the folder that holds its own transcript, also while its working folder is somewhere else. That folder is found from the working folder when a check runs, and remembered; until it is found, nothing is written. Versions 0.9.0 to 0.9.2 kept one file for all projects, `~/.claude/claim-check-last.json`; it is no longer written and can be deleted.
 
 ## Limits
 

@@ -63,6 +63,8 @@ declare module 'claude-code' {
       picks: Picks
       // The transcript's last row when the running turn began; null when it could not be read.
       turnStart: { turnId: string; uuid: string } | null
+      // The folder under the config folder that holds this session's transcript, once found.
+      sessionFolder: { session: string; dir: string } | null
     }
   }
 }

@@ -24,6 +24,8 @@ const isOwnTurn = atom({ plugin: 'claim-check', key: 'isOwnTurn' } as const, fal
 const picks = atom({ plugin: 'claim-check', key: 'picks' } as const, {} as Picks)
 // The transcript's last row when the running turn began: what came after it is this turn's.
 const turnStart = atom({ plugin: 'claim-check', key: 'turnStart' } as const, null as { turnId: string; uuid: string } | null)
+// The folder that holds this session's transcript, once found (sessionDir).
+const sessionFolder = atom({ plugin: 'claim-check', key: 'sessionFolder' } as const, null as { session: string; dir: string } | null)
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 // The judge's effort until one is picked: the check stays quick.
 const DEFAULT_EFFORT = 'low'
@@ -93,14 +95,15 @@ const LEGEND: [Verdict, string][] = [
   ['backed', "stated by this turn's tool output; counted, not listed"],
 ]
 
-const VERSION = '0.9.3'
+const VERSION = '0.9.4'
 // What the row says when a reload of this mod cut a check short.
 const INTERRUPTED = 'This answer was not checked: claim-check restarted before it finished, because its code had just been changed.'
 export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home folder; the last 200 lines
 // The last checks as the judge saw them (the prompts, the replies, the verdicts), newest first:
 // what answers "why was this flagged". One file per project, in the session's own folder under
 // the config folder: a check holds excerpts of the session, and there they lie next to its
-// transcripts, not in a file every project's sessions share. Written unless the log is off.
+// transcripts, not in a file every project's sessions share. Written unless the log is off,
+// and only once that folder is known.
 export const LAST_CHECK = 'claim-check-last.json'
 const LAST_CHECKS_KEPT = 4
 // off: nothing. summary: one line per check and per load. stages: a line at each step of a check too.
@@ -133,16 +136,25 @@ async function memoryDir($: EngineInterface, config: string, cwd: string): Promi
 
 // The session's own folder under the config folder: the one that holds its transcript. It is named
 // after the folder the session started in, and the working folder may have moved below it since,
-// so the working folder is tried first, then each folder above it.
-async function sessionDir($: EngineInterface, config: string, cwd: string, session: string): Promise<string> {
-  const named = (folder: string) => `${config}/projects/${folder.replace(/[^A-Za-z0-9]/g, '-')}`
+// so the working folder is tried first, then each folder above it. Once found it is remembered:
+// a session whose working folder is in another project by then still writes to its own folder.
+// Undefined while it is not found: nothing is written into a folder that is not the session's.
+async function sessionDir($: EngineInterface, config: string, cwd: string, session: string): Promise<string | undefined> {
+  if (session === '') return undefined
+  const known = await read($, sessionFolder)
+  if (known?.session === session) return known.dir
   let at = cwd
-  for (let i = 0; i < 12 && at !== '' && session !== ''; i++) {
-    if (await $.fs.exists(`${named(at)}/${session}.jsonl`).catch(() => false)) return named(at)
+  for (let i = 0; i < 12 && at !== ''; i++) {
+    const dir = `${config}/projects/${at.replace(/[^A-Za-z0-9]/g, '-')}`
+    if (await $.fs.exists(`${dir}/${session}.jsonl`).catch(() => false)) {
+      await update($, sessionFolder, () => ({ session, dir }))
+
+      return dir
+    }
     at = at.slice(0, at.lastIndexOf('/'))
   }
 
-  return named(cwd)
+  return undefined
 }
 
 const noteCache = new Map<string, { size: number; full: string }>()
@@ -408,8 +420,12 @@ export const register: Register = (on, options) => {
       const claims = r.isAnswered ? resolve(reply, all, fresh, answer) : null
       if (claims && again !== null) stats.foundAgain = doubts.filter(d => claims[d.at] !== undefined && claims[d.at]?.verdict !== 'unverified').length
       const cwd = logMode !== 'off' && home ? await $.session.cwd().catch(() => '') : ''
-      if (home && cwd !== '') {
-        const session = await $.session.id().catch(() => '')
+      const session = cwd === '' ? '' : await $.session.id().catch(() => '')
+      const folder =
+        home && cwd !== ''
+          ? await sessionDir($, (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) || `${home}/.claude`, cwd, session).catch(() => undefined)
+          : undefined
+      if (folder !== undefined) {
         const seen = {
           at: new Date(now).toISOString(),
           version: VERSION,
@@ -427,8 +443,7 @@ export const register: Register = (on, options) => {
           second: again === null ? null : { prompt: again, reply: r2?.isAnswered ? r2.text : (r2?.reason ?? '') },
           claims,
         }
-        const config = (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) || `${home}/.claude`
-        const path = `${await sessionDir($, config, cwd, session)}/${LAST_CHECK}`
+        const path = `${folder}/${LAST_CHECK}`
         // ponytail: read, then written whole; two sessions of one project finishing a check at once can lose one entry.
         const old: unknown = await $.fs
           .read(path)

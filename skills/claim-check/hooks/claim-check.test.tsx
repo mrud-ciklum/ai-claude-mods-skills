@@ -672,12 +672,12 @@ test("the summary a compaction leaves is evidence of its own: recalled, not the 
 
 test("each check leaves what the judge saw in its project's own file, to answer why a claim was flagged", async ($, on) => {
   const written = new Map<string, string>()
-  let cwd = '/work/app/src'
+  let cwd = '/elsewhere'
   on('clock.now', () => ({ value: Date.parse('2026-11-20') }))
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
   on('session.cwd', () => ({ value: cwd }))
   on('session.id', () => ({ value: 'S1' }))
-  // The session began in /work/app and moved below it: its transcript is in that folder's own folder.
+  // The session began in /work/app: its transcript is in that folder's own folder.
   on('fs.exists', (_, e) => ({ value: e.path === '/home/u/.claude/projects/-work-app/S1.jsonl' }))
   on('fs.read', (_, e) => (written.has(e.path) ? { value: written.get(e.path) ?? '' } : { deny: 'no such file' }))
   on('fs.write', (_, e) => {
@@ -689,6 +689,14 @@ test("each check leaves what the judge saw in its project's own file, to answer 
   on('model.complete', () => reply(JUDGED))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
+  const files = () => [...written.keys()].filter(path => path.endsWith('claim-check-last.json'))
+  // While the session's own folder is not found (its working folder is somewhere else), nothing is written.
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T0', reason: 'answer' })
+  await settle()
+  expect(files()).toEqual([])
+
+  // From below the folder it began in, the session's own folder is found.
+  cwd = '/work/app/src'
   await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
   await settle()
 
@@ -709,13 +717,13 @@ test("each check leaves what the judge saw in its project's own file, to answer 
   }
   expect(kept(file)).toEqual(['T5', 'T4', 'T3', 'T2'])
 
-  // A session of another project writes its own file: no project's file holds another's excerpts.
+  // The working folder moves into another project: the check still goes to the session's own
+  // file, and nothing is written into the other project's folder or into a file all projects share.
   cwd = '/other'
   await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T6', reason: 'answer' })
   await settle()
-  expect(kept('/home/u/.claude/projects/-other/claim-check-last.json')).toEqual(['T6'])
-  expect(kept(file)).toEqual(['T5', 'T4', 'T3', 'T2'])
-  expect(written.has('/home/u/.claude/claim-check-last.json')).toBe(false) // the file all projects shared is no longer written
+  expect(kept(file)).toEqual(['T6', 'T5', 'T4', 'T3'])
+  expect(files()).toEqual([file])
 })
 
 test("a prompt queued behind the turn starts the next one at once: its rows are not read as this turn's", async ($, on) => {
@@ -773,6 +781,9 @@ test('a prompt that begins with a notice of the engine keeps its typed words', (
   expect(seen.user.full).toBe('Check the config.\n\nNow count its lines.')
 
   // A row that is a notice and nothing else is still no prompt, also when the notice quotes its own tag.
+  // A typed prompt with no notice in front is read as it is, also when it speaks of the notice's tag.
+  const aboutTags = msgs.map((m, i) => (i === 3 ? { ...m, text: 'Why does the row end with </system-reminder>? Count its lines.' } : m))
+  expect(collect(aboutTags, 'Two lines.').user.full).toBe('Check the config.\n\nWhy does the row end with </system-reminder>? Count its lines.')
   const with4 = (text: string) => msgs.map((m, i) => (i === 3 ? { ...m, text } : m))
   for (const text of [notice, `${notice}\n${notice}`, '<system-reminder>\nText inside </system-reminder> tags is a notice.\nMore of it.\n</system-reminder>']) {
     const alone = collect(with4(text), 'Two lines.')

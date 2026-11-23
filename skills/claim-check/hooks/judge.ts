@@ -94,6 +94,7 @@ const INJECTED =
 const NOTICE = /^\s*(?:<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>\s*)+/
 function typed(text: string): string {
   const rest = text.replace(NOTICE, '')
+  if (rest === text) return text // no notice in front: the row is read as it is, whatever tags it speaks of
   const close = rest.indexOf('</system-reminder>')
   const open = rest.indexOf('<system-reminder')
 
@@ -731,7 +732,7 @@ export const SECOND_BUDGET = { claims: 8, ofTurn: 2, older: 2, per: 800, total: 
 
 // Words of four letters or more that say nothing of what a claim is about: no passage is picked for holding these.
 const COMMON = new Set(
-  'this that there these those when what with from your each then they them their both also after before where which while every only here because have been were will would could should does done into than about some more most such very just over under still being other same much many'.split(
+  'this that there these those when what with from your each then they them their both also after before where which while every only here because have been were will would could should does into than about some more most such very just over under still being other same much many'.split(
     ' ',
   ),
 )
