@@ -26,6 +26,10 @@ const picks = atom({ plugin: 'claim-check', key: 'picks' } as const, {} as Picks
 const turnStart = atom({ plugin: 'claim-check', key: 'turnStart' } as const, null as { turnId: string; uuid: string } | null)
 // The folder that holds this session's transcript, once found (sessionDir).
 const sessionFolder = atom({ plugin: 'claim-check', key: 'sessionFolder' } as const, null as { session: string; dir: string } | null)
+// The flags marked wrong in this project's feedback file, by verdict, once read or written (markWrong).
+const wrongTally = atom({ plugin: 'claim-check', key: 'wrongTally' } as const, null as Record<string, number> | null)
+// The model the second look runs on when "opus" is picked for it.
+const STRONGER = 'opus'
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 // The judge's effort until one is picked: the check stays quick.
 const DEFAULT_EFFORT = 'low'
@@ -95,7 +99,7 @@ const LEGEND: [Verdict, string][] = [
   ['backed', "stated by this turn's tool output; counted, not listed"],
 ]
 
-const VERSION = '0.9.4'
+const VERSION = '0.10.0'
 // What the row says when a reload of this mod cut a check short.
 const INTERRUPTED = 'This answer was not checked: claim-check restarted before it finished, because its code had just been changed.'
 export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home folder; the last 200 lines
@@ -106,6 +110,10 @@ export const TIMINGS = '.claude/claim-check-timings.jsonl' // under the home fol
 // and only once that folder is known.
 export const LAST_CHECK = 'claim-check-last.json'
 const LAST_CHECKS_KEPT = 4
+// The flags a person marked wrong (Wrong in the pane), one JSON line each, the last 500, in the
+// same project folder: what tells how often each verdict is wrong.
+export const FEEDBACK = 'claim-check-feedback.jsonl'
+const FEEDBACK_KEPT = 500
 // off: nothing. summary: one line per check and per load. stages: a line at each step of a check too.
 let logMode = 'summary'
 
@@ -244,6 +252,60 @@ const hasDigSkill = async ($: EngineInterface) => {
 }
 
 // One claim, measured properly: the method of the dig skill, or the skill itself where the project has one.
+// This session's project folder, found as the check's own file is (sessionDir).
+async function projectDir($: EngineInterface): Promise<string | undefined> {
+  const home = await $.env.get('HOME').catch(() => undefined)
+  if (!home) return undefined
+  const config = (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) || `${home}/.claude`
+  const cwd = await $.session.cwd().catch(() => '')
+  const session = await $.session.id().catch(() => '')
+
+  return cwd === '' ? undefined : sessionDir($, config, cwd, session).catch(() => undefined)
+}
+
+const tallyOf = (lines: readonly string[]) => {
+  const out: Record<string, number> = {}
+  for (const line of lines) {
+    try {
+      const verdict = (JSON.parse(line) as { verdict?: unknown }).verdict
+      if (typeof verdict === 'string') out[verdict] = (out[verdict] ?? 0) + 1
+    } catch {
+      // a broken line counts for nothing
+    }
+  }
+
+  return out
+}
+
+// Wrong: the person says a flag is false. The claim shows as marked, and a line goes to the
+// project's feedback file, which the pane counts.
+async function markWrong($: EngineInterface, turnId: string, index: number) {
+  const check = await read($, last)
+  const claim = check?.turnId === turnId ? check.claims[index] : undefined
+  if (!check || !claim || claim.isMarkedWrong) return
+  await update($, last, cur =>
+    cur?.turnId === turnId ? { ...cur, claims: cur.claims.map((c, i) => (i === index ? { ...c, isMarkedWrong: true } : c)) } : cur,
+  )
+  const dir = await projectDir($)
+  if (dir === undefined) return
+  const path = `${dir}/${FEEDBACK}`
+  const old = (await $.fs.read(path).catch(() => '')).split('\n').filter(Boolean)
+  const row = {
+    at: new Date(await $.clock.now()).toISOString(),
+    version: VERSION,
+    model: check.stats?.model,
+    effort: check.stats?.effort,
+    verdict: claim.verdict,
+    priority: claim.priority,
+    claim: claim.claim,
+    said: claim.said,
+    source: claim.source,
+  }
+  const kept = [...old, JSON.stringify(row)].slice(-FEEDBACK_KEPT)
+  await $.fs.write(path, `${kept.join('\n')}\n`).catch(() => undefined)
+  await update($, wrongTally, () => tallyOf(kept))
+}
+
 async function dig($: EngineInterface, turnId: string, index: number) {
   const check = await read($, last)
   const claim = check?.turnId === turnId ? check.claims[index] : undefined
@@ -363,7 +425,9 @@ export const register: Register = (on, options) => {
           : []
       const again = doubts.length > 0 ? buildSecondPrompt({ doubts, all, today }) : null
       if (again !== null) await stage('asking again', { claims: doubts.length, promptChars: again.length })
-      const r2 = again === null ? undefined : await $.model.complete({ model, system: SECOND, prompt: again, maxTokens: SECOND_REPLY, effort, timeoutMs: 60_000 })
+      // The second look may run on a stronger model than the first pass (Second look: opus).
+      const secondModel = pick.secondLook === STRONGER ? STRONGER : model
+      const r2 = again === null ? undefined : await $.model.complete({ model: secondModel, system: SECOND, prompt: again, maxTokens: SECOND_REPLY, effort, timeoutMs: 120_000 })
       const reply = !r.isAnswered ? '' : r2?.isAnswered ? amend(r.text, r2.text, doubts) : r.text
       const answered = await $.clock.now()
       const stats: NonNullable<Check['stats']> = {
@@ -374,7 +438,7 @@ export const register: Register = (on, options) => {
         isCut: r.isAnswered && (parseReply(r.text)?.isCut ?? true),
         model,
         effort,
-        ...(again === null ? {} : { lookedAgain: doubts.length, foundAgain: 0 }),
+        ...(again === null ? {} : { lookedAgain: doubts.length, foundAgain: 0, secondModel }),
       }
       // One line per check: where the time went and what came out.
       const summary = (outcome: string, claims: Claim[] = [], settled = 0) =>
@@ -607,6 +671,7 @@ export const register: Register = (on, options) => {
       )
     }
     const turnId = check.turnId
+    const tally = await read($, wrongTally)
     const order = check.claims
       .map((c, index) => ({ ...c, index }))
       .sort(byWeight)
@@ -632,7 +697,7 @@ export const register: Register = (on, options) => {
               {check.stats.judgeSeconds} s). The judge read {Math.round(check.stats.promptChars / 1000)}k characters and wrote{' '}
               {check.stats.replyTokens} tokens.{check.stats.model ? ` The judge was ${check.stats.model} at ${check.stats.effort ?? DEFAULT_EFFORT} effort.` : ''}
               {check.stats.lookedAgain
-                ? ` It looked again, across the whole session, for ${check.stats.lookedAgain} ${check.stats.lookedAgain === 1 ? 'claim' : 'claims'} it had found no support for, and found it for ${check.stats.foundAgain ?? 0}.`
+                ? ` It looked again, across the whole session${check.stats.secondModel && check.stats.secondModel !== check.stats.model ? ` on ${check.stats.secondModel}` : ''}, for ${check.stats.lookedAgain} ${check.stats.lookedAgain === 1 ? 'claim' : 'claims'} it had found no support for, and found it for ${check.stats.foundAgain ?? 0}.`
                 : ''}
               {check.stats.isCut ? ' Its reply was cut off, so some claims may be missing.' : ''}
             </Text>
@@ -650,13 +715,23 @@ export const register: Register = (on, options) => {
             {c.said ? <Text dimColor>  The judge's reading: {c.claim}</Text> : null}
             {c.source ? <Text dimColor>  {c.source}</Text> : null}
             {c.check ? <Text dimColor>  To check: {c.check}</Text> : null}
-            {DIGGABLE.includes(c.verdict) && !c.isDug ? (
+            {c.isMarkedWrong ? (
+              <Text dimColor>  Marked wrong.</Text>
+            ) : (
               <Box>
-                <Button key={`dig-${c.index}`} label="Dig" onPress={() => dig($, turnId, c.index)} />
+                {DIGGABLE.includes(c.verdict) && !c.isDug ? <Button key={`dig-${c.index}`} label="Dig" onPress={() => dig($, turnId, c.index)} /> : null}
+                <Button key={`wrong-${c.index}`} label="Wrong" dimColor onPress={() => markWrong($, turnId, c.index)} />
               </Box>
-            ) : null}
+            )}
           </Box>
         ))}
+        {tally ? (
+          <Text dimColor>
+            Marked wrong in this project so far: {Object.entries(tally).map(([v, n]) => `${v} ${n}`).join(', ')}. Wrong writes the flag to {FEEDBACK} in the project's folder under ~/.claude/projects.
+          </Text>
+        ) : (
+          <Text dimColor>Wrong marks a flag as false and writes it to {FEEDBACK} in the project's folder under ~/.claude/projects.</Text>
+        )}
         {legend}
       </Box>
     )
@@ -718,6 +793,8 @@ function picksIn(value: unknown): Picks {
   const model = typeof mine.model === 'string' && mine.model.trim() !== '' ? mine.model.trim() : undefined
   const effort = EFFORTS.find(level => level === mine.effort)
 
-  return { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }), ...(mine.secondLook === 'off' ? { secondLook: false } : {}) }
+  const secondLook = mine.secondLook === 'off' ? false : mine.secondLook === STRONGER ? STRONGER : undefined
+
+  return { ...(model === undefined ? {} : { model }), ...(effort === undefined ? {} : { effort }), ...(secondLook === undefined ? {} : { secondLook }) }
 }
 // ---- end of mods switch ----

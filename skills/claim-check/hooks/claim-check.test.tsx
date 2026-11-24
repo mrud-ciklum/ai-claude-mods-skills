@@ -910,7 +910,7 @@ test('the judge is asked a second time about unsupported claims alone, and the p
 test('a second look that fails leaves the first verdicts as they were', async ($, on) => {
   on('clock.now', () => ({ value: Date.parse('2026-11-20') }))
   on('session.messages', () => ({ value: MESSAGES }))
-  on('model.complete', (_, e) => (e.system === SECOND ? { value: { isAnswered: false, reason: 'timeout' } as ModelCompleteResult } : reply(UNSUPPORTED)))
+  on('model.complete', (_, e) => (e.system === SECOND ? { value: { isAnswered: false, reason: 'timeout' } as unknown as ModelCompleteResult } : reply(UNSUPPORTED)))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
   await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
@@ -1051,4 +1051,104 @@ test('a minor claim gets no second look, and none is made when it is switched of
   await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T3', reason: 'answer' })
   await settle()
   expect(calls).toEqual(['first', 'first', 'second', 'first'])
+})
+
+test("a command's own output file rewritten later leaves what it printed as it was; what it wrote is stale", () => {
+  const msgs = [
+    { role: 'user', text: 'Check the mod and write the body.', toolUses: [] },
+    {
+      role: 'assistant',
+      text: '',
+      toolUses: [
+        { tool_use_id: 'a', tool: 'Bash', input: { command: 'claude plugin validate . > /s/v.log 2>&1; echo "validate exit $?"' }, text: 'validate exit 0' },
+        { tool_use_id: 'b', tool: 'Bash', input: { command: "cat > /s/body.md <<'EOF'\nThe body has no dashes.\nEOF" }, text: '' },
+        { tool_use_id: 'c', tool: 'Bash', input: { command: 'claude plugin validate . > /s/v.log 2>&1; cat > /s/body.md <<EOF\nnew text\nEOF' }, text: '' },
+      ],
+    },
+    { role: 'assistant', text: 'Validate passes and the body has no dashes.', toolUses: [] },
+  ] as SessionMessage[]
+  const seen = collect(msgs, 'Validate passes and the body has no dashes.')
+  expect(seen.tools.map(t => [t.ref, t.staleBy, t.staleRead])).toEqual([
+    ['E1', 'E3', undefined], // only its own log was rewritten
+    ['E2', 'E3', undefined], // only its own file was rewritten
+    ['E3', undefined, undefined],
+  ])
+  const reply =
+    '{"ok":0,"claims":[{"c":"validate passes","a":"","s":"d","r":"E1","q":"validate exit 0","v":1,"p":1},' +
+    '{"c":"the body has no dashes","a":"","s":"d","r":"E2","q":"The body has no dashes.","v":1,"p":1}]}'
+  const claims = resolve(reply, [...seen.tools, seen.user]) ?? []
+  // What validate printed stands; what the command wrote into a file that changed later is stale.
+  expect(claims.map(c => c.verdict)).toEqual(['backed', 'stale'])
+  // The judge is told so: what a command printed is not marked STALE for a rewrite of its own file.
+  const prompt = buildPrompt({ answer: seen.answer, tools: seen.tools, memory: [], user: seen.user, today: '2026-11-24' })
+  expect(prompt).toContain('[E1 | Bash claude plugin validate . > /s/v.log 2>&1; echo "validate exit $?" | this turn | REWRITTEN')
+  expect(prompt).not.toContain('E1 | Bash claude plugin validate . > /s/v.log 2>&1; echo "validate exit $?" | this turn | STALE')
+
+  // A file the earlier command only read, changed later, still makes it stale.
+  const read = [
+    msgs[0]!,
+    { role: 'assistant', text: '', toolUses: [{ tool_use_id: 'a', tool: 'Bash', input: { command: 'cat /s/c.yml' }, text: 'retries: 5' }, { tool_use_id: 'b', tool: 'Bash', input: { command: "sed -i '' 's/5/6/' /s/c.yml" }, text: '' }] },
+  ] as SessionMessage[]
+  expect(collect(read, 'x').tools[0]?.staleRead).toBe('E2')
+})
+
+test("what an answer says about its own limits is a caveat, not a flag, and gets no second look", () => {
+  const all: Evidence[] = [{ ref: 'E1', kind: 'tool', label: 'Bash ls', full: 'command: ls\nREADME.md', isCurrent: true, turnsAgo: 0 }, SAID]
+  const reply =
+    '{"ok":0,"claims":[{"c":"The mod has not been checked in a live session yet","a":"","s":"n","r":"","q":"","v":1,"p":2},' +
+    '{"c":"Real checks of 0.9.4 were not verified","a":"цього я не перевіряв","s":"n","r":"","q":"","v":1,"p":2},' +
+    '{"c":"the deploy is green","a":"","s":"n","r":"","q":"","v":1,"p":1}]}'
+  expect((resolve(reply, all) ?? []).map(c => c.claim)).toEqual(['the deploy is green'])
+  expect(doubted(reply, all).map(d => d.claim)).toEqual(['the deploy is green'])
+  expect(SYSTEM).toContain('Skip what the answer says about its own limits')
+})
+
+test('Wrong marks a flag as false, writes it to the project file, and the pane counts it', async ($, on) => {
+  const written = new Map<string, string>()
+  on('clock.now', () => ({ value: Date.parse('2026-11-24') }))
+  on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+  on('session.cwd', () => ({ value: '/work/app' }))
+  on('session.id', () => ({ value: 'S1' }))
+  on('fs.exists', (_, e) => ({ value: e.path === '/home/u/.claude/projects/-work-app/S1.jsonl' }))
+  on('fs.read', (_, e) => (written.has(e.path) ? { value: written.get(e.path) ?? '' } : { deny: 'no such file' }))
+  on('fs.write', (_, e) => {
+    written.set(e.path, e.text)
+
+    return { value: undefined }
+  })
+  on('session.messages', () => ({ value: MESSAGES }))
+  on('model.complete', () => reply('{"ok":3,"claims":[{"c":"the deploy is green","s":"n","r":"","q":"","v":1,"p":1}]}'))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await pane.press({ key: 'wrong-0' })
+  expect(await pane.find({ type: 'Text', text: /Marked wrong\./ })).toBeDefined()
+  expect(await pane.find({ type: 'Button', key: 'wrong-0' })).toBeUndefined()
+  const file = written.get('/home/u/.claude/projects/-work-app/claim-check-feedback.jsonl') ?? ''
+  expect(JSON.parse(file.trim())).toMatchObject({ verdict: 'unverified', claim: 'the deploy is green', priority: 1 })
+  expect((await pane.find({ type: 'Text', text: /Marked wrong in this project so far/ }))?.text).toContain('unverified 1')
+  await pane.unmount()
+})
+
+test('picked in the Mods panel, the second look runs on Opus while the first pass keeps its model', async ($, on) => {
+  const models: string[] = []
+  switchesFile(on, JSON.stringify({ off: [], modSettings: { 'claim-check': { model: 'sonnet', secondLook: 'opus' } } }))
+  on('clock.now', () => ({ value: Date.parse('2026-11-24') }))
+  on('session.messages', () => ({ value: MESSAGES }))
+  on('model.complete', (_, e) => {
+    models.push(e.model)
+
+    return reply(e.system === SECOND ? '{"claims":[{"n":1,"s":"d","r":"E3","q":"timeout: 60"}]}' : UNSUPPORTED)
+  })
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+  expect(models).toEqual(['sonnet', 'opus'])
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await pane.find({ type: 'Text', text: /It looked again/ }))?.text).toContain('across the whole session on opus')
+  await pane.unmount()
 })

@@ -31,6 +31,7 @@ Each listed claim is also rated key, normal or minor. Key means you are likely t
 - **Details** opens a pane with every listed claim, its source and its priority, and a legend of the marks at its foot.
 - **Verify** sends the model a prompt to check the flagged claims with read-only tools.
 - **Dig** (per claim, in the pane) has the model measure one claim properly and correct it at its source if it was wrong.
+- **Wrong** (per claim, in the pane) says the flag is false. The claim shows as marked, and a line goes to `claim-check-feedback.jsonl` in the project's folder under `~/.claude/projects/` (the last 500). The pane counts them by verdict: that is how to tell which verdicts are wrong most often.
 - Flagged claims that are not minor are handed to the model with your next prompt, once, so it can check or retract them. An assumption is handed over only when it is key; the rest stay in the pane.
 
 ## How it works
@@ -39,7 +40,8 @@ Each listed claim is also rated key, normal or minor. Key means you are likely t
 2. It cuts that down to about 59,000 characters. Every tool call of the turn gets a share (short outputs whole, long ones cut to the lines that share the answer's rarest words plus their head and tail; a call's input keeps its own line breaks, so a long command or a file written through one is cut by lines too). Of older calls it keeps those that hold the answer's rare words (a word found in few calls weighs more, so the model's own drafts, which repeat the answer, do not crowd out the sources), and the newest eight whatever they say.
 3. A judge model says how each claim relates to a passage and quotes 3 to 8 words from it.
 4. Claims the judge found no support for get a second look, unless they are minor or the second look is switched off. It looks for support only and never adds a contradiction. For each, the mod searches every tool call of the session by the claim's own words (any word of four letters or more that says something, whatever the case, plus the answer's wording; a word counts where a word of the passage starts with it, so `flag` finds `flags` and `main` does not find `remain`), this turn's calls apart from the older ones, and asks the judge once more about those claims alone, with up to two passages of this turn and two older ones for each. The first pass reads a cut-down view chosen by the whole answer, so a passage that backs one claim can be missing from it.
-5. Code, not the judge, does the rest. It checks that each quote is really in the cited evidence, works out where the evidence came from and how old it is, and marks a read as stale when the file was changed afterwards (by an edit or a shell command) and the quoted line is gone.
+5. Code, not the judge, does the rest. It checks that each quote is really in the cited evidence, works out where the evidence came from and how old it is, and marks a read as stale when the file was changed afterwards (by an edit or a shell command) and the quoted line is gone. A file a command wrote itself (its own log) does not make what the command printed stale when it is rewritten later; what the command wrote into it does.
+6. What the answer says about its own limits ("not checked", "не перевіряв") is a caveat, not a claim: it is never flagged.
 
 The check runs after the answer is shown, so it never delays a reply. Only the transcript is read before the turn is handed back (13 ms as a rule, 78 ms at most in 145 logged checks), so that a prompt queued behind the turn cannot mix its rows into the check.
 
@@ -52,7 +54,7 @@ Each check is one extra model call on your own account, and a second, smaller on
 - the summary a compaction left, when there is one
 - `CLAUDE.md`, the memory index, and up to 4 memory notes
 
-Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,000 to 10,000 input tokens and 400 to 500 output tokens per check, about 3 seconds. Later versions send more (the newest older calls, the summary, the second look), not yet measured.
+Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,000 to 10,000 input tokens and 400 to 500 output tokens per check, about 3 seconds. From the local log on 24 November 2026: 129 checks on Sonnet at low effort took 5.3 s at the median for the judge; 12 checks of 0.9.4 on Opus at high effort took 21.9 s at the median, with 19,095 input and 2,214 output tokens at the median. Hence the `opus` choice for the second look alone.
 
 ## Settings
 
@@ -61,7 +63,7 @@ Measured on Sonnet with version 0.7 in a session with about 200 tool calls: 7,00
 | Judge model | sonnet | haiku is faster and misses more; opus is slower and stricter. |
 | Model (Mods panel) | Judge model | Picked under the mod's row in the Mods panel: an alias the /config menu offers (`sonnet (latest)` follows each new version), or a full model id such as `claude-sonnet-5-5` to pin one. Wins over Judge model. |
 | Effort (Mods panel) | low | The judge's reasoning effort: low, medium, high, xhigh or max. Higher is slower and costs more. |
-| Second look (Mods panel) | on | Whether claims left without support are looked up in the whole session and judged once more. Off saves the second model call. |
+| Second look (Mods panel) | on | Whether claims left without support are looked up in the whole session and judged once more. `opus` runs that second call on Opus while the first pass keeps its model: a strong judge only where it is needed. Off saves the second call. |
 | Auto-correct contradictions | off | When on, a contradicted claim sends one correction prompt unasked. |
 | Timing log | summary | Writes one line per check to `~/.claude/claim-check-timings.jsonl`, and the project's last four checks as the judge saw them (the prompts, the replies, the verdicts) to `claim-check-last.json` in the project's folder under `~/.claude/projects/`. `stages` adds a line per step; `off` writes neither. |
 

@@ -5,6 +5,6 @@
   "settings": [
     { "key": "model", "label": "Model", "options": "models", "default": "sonnet" },
     { "key": "effort", "label": "Effort", "options": ["low", "medium", "high", "xhigh", "max"], "default": "low" },
-    { "key": "secondLook", "label": "Second look", "options": ["on", "off"], "default": "on" }
+    { "key": "secondLook", "label": "Second look", "options": ["on", "opus", "off"], "default": "on" }
   ]
 }

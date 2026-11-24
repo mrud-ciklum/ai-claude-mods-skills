@@ -17,6 +17,7 @@ export type Claim = {
   check: string // how to verify it with a tool
   priority: 1 | 2 | 3 // 1 key (the user will act on it), 2 normal, 3 minor detail
   isDug?: boolean // its Dig button was pressed
+  isMarkedWrong?: boolean // its Wrong button was pressed: the person says the flag is false
 }
 
 export type Check = {
@@ -38,14 +39,16 @@ export type Check = {
     effort?: string
     lookedAgain?: number
     foundAgain?: number
+    secondModel?: string // the model the second look ran on
   }
   // The flagged claims were already handed to the model (next prompt, Verify, or auto-correction).
   isFedBack: boolean
 }
 
 // The judge's model and effort as picked in the Mods panel; absent, the Judge model setting and low.
-// `secondLook: false` when the panel switches the second look off; absent, it is on.
-export type Picks = { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'; secondLook?: false }
+// `secondLook: false` when the panel switches the second look off, 'opus' when it runs on Opus;
+// absent, it is on and runs on the first pass's model.
+export type Picks = { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'; secondLook?: false | 'opus' }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -65,6 +68,8 @@ declare module 'claude-code' {
       turnStart: { turnId: string; uuid: string } | null
       // The folder under the config folder that holds this session's transcript, once found.
       sessionFolder: { session: string; dir: string } | null
+      // The flags marked wrong in this project's feedback file, by verdict.
+      wrongTally: Record<string, number> | null
     }
   }
 }

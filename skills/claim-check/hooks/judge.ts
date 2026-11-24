@@ -13,7 +13,11 @@ export type Evidence = {
   isCurrent: boolean // from the turn being checked
   turnsAgo: number
   staleBy?: string // the later change of the same file
+  // The first later change of a file the call read, not one it wrote itself: a command's
+  // own output file (a log it wrote) rewritten later leaves what the command printed as it was.
+  staleRead?: string
   staleFile?: string // that file, when its full path is known: re-read to see if a quote survived
+  inputChars?: number // how much of `full` is the call's input: what it ran or wrote, before what it printed
   path?: string // the file a Read, Edit or Write call names
   command?: string // a Bash call's command
   ageDays?: number // a memory note's age
@@ -42,11 +46,11 @@ const READING = `How to read the evidence:
 
 export const SYSTEM = `You audit an AI assistant's answer against the evidence it had. Today's date is in <today>.
 
-Go through the checkable factual claims in <answer>: numbers, names, dates, versions, paths; what files, code, docs, people or systems say, did or will do; that something was tested, verified, installed or works. Skip opinions, advice and plans.
+Go through the checkable factual claims in <answer>: numbers, names, dates, versions, paths; what files, code, docs, people or systems say, did or will do; that something was tested, verified, installed or works. Skip opinions, advice and plans. Skip what the answer says about its own limits: what it did not check, do or measure.
 
 ${READING}
 
-A claim is SETTLED when a passage in evidence marked "this turn" and not marked STALE states it directly. Do not list settled claims. Count them in "ok".
+A claim is SETTLED when a passage in evidence marked "this turn" and not marked STALE states it directly; in evidence marked REWRITTEN, only a passage in what the command printed counts. Do not list settled claims. Count them in "ok".
 
 List every other claim, at most 8, the most important first, one object each:
 - c: the claim, under 90 characters.
@@ -244,6 +248,16 @@ export function collect(msgs: readonly SessionMessage[], finalAnswer: string, ho
   const turns = msgs.filter(isPrompt).length
   const tools: Evidence[] = []
   let turn = 0
+  // What each earlier command wrote, worked out once.
+  const wrote = new Map<string, string[]>()
+  const writesBy = (command: string) => {
+    const known = wrote.get(command)
+    if (known) return known
+    const found = bashChanges(command, home)
+    wrote.set(command, found)
+
+    return found
+  }
   // What each earlier command named, worked out once.
   const named = new Map<string, string[]>()
   const namedBy = (command: string) => {
@@ -273,19 +287,29 @@ export function collect(msgs: readonly SessionMessage[], finalAnswer: string, ho
                 ? sameFile(old.path, name)
                 : old.command !== undefined &&
                   (namedBy(old.command).some(seen => sameFile(seen, name)) || (!base(name).includes('.') && old.command.includes(base(name))))
-          if (isAbout && old.staleBy === undefined) {
+          if (!isAbout) continue
+          // A file the earlier command wrote itself (its own log, say) is not something it read.
+          const isOwnWrite = old.command !== undefined && writesBy(old.command).some(w => w !== '*' && sameFile(w, name))
+          // ponytail: a shell read made stale by a shell write of a relative
+          // name has no full path, so it cannot be re-read and stays stale.
+          const file = old.path ?? (name.startsWith('/') ? name : undefined)
+          if (old.staleBy === undefined) {
             old.staleBy = ref
-            // ponytail: a shell read made stale by a shell write of a relative
-            // name has no full path, so it cannot be re-read and stays stale.
-            old.staleFile = old.path ?? (name.startsWith('/') ? name : undefined)
+            old.staleFile = file
+          }
+          if (!isOwnWrite && old.staleRead === undefined) {
+            old.staleRead = ref
+            old.staleFile = file
           }
         }
       }
+      const input = shown(u.input)
       tools.push({
         ref,
         kind: 'tool',
         label: `${u.tool} ${brief(u.input)}`,
-        full: `${shown(u.input)}\n${u.text ?? ''}`,
+        full: `${input}\n${u.text ?? ''}`,
+        inputChars: input.length,
         isCurrent: idx > start,
         turnsAgo: turns - turn,
         path,
@@ -420,7 +444,11 @@ const head = (e: Evidence) => {
         : e.isCurrent
           ? 'this turn'
           : `${e.turnsAgo} turn(s) ago`
-  const stale = e.staleBy ? ` | STALE: the file was changed later (${e.staleBy})` : ''
+  const stale = e.staleRead
+    ? ` | STALE: the file was changed later (${e.staleRead})`
+    : e.staleBy
+      ? ` | REWRITTEN: a file this command wrote was changed later (${e.staleBy}); what it printed stands`
+      : ''
 
   return `[${e.ref} | ${e.label} | ${when}${stale}]`
 }
@@ -658,6 +686,12 @@ export function citedStaleFiles(reply: string, all: readonly Evidence[]): string
   return [...new Set(all.filter(e => cited.has(e.ref) && e.staleFile).map(e => e.staleFile as string))]
 }
 
+// What an answer says about its own limits ("not checked", "не перевіряв"): a caveat, not a
+// claim of fact, so never a flag. Matched in the judge's wording and in the answer's.
+const CAVEAT =
+  /\b(?:not (?:yet )?(?:been )?(?:verified|checked|measured|tested|confirmed|looked (?:at|into)|investigated)|did(?: not|n't) (?:check|verify|measure|test|look|investigate)|ha(?:ve|s)(?: not|n't) (?:been )?(?:checked|verified|measured|tested)|unverified)\b|не перевір|неперевір|не з['’]ясов|не мір|не дивив|не дослідж/iu
+export const isCaveat = (claim: string, said: string) => CAVEAT.test(claim) || CAVEAT.test(said)
+
 // The judge says how a claim relates to a passage; the code decides the rest:
 // whether the passage exists, where it came from and how old it is.
 // `fresh` holds the current text of changed files: a read made before a
@@ -675,6 +709,7 @@ export function resolve(reply: string, all: readonly Evidence[], fresh?: Readonl
     const claim = field(r, 'c', 'claim')
     const check = field(r, 'k', 'check')
     const words = field(r, 'a', 'said').replace(/\s+/g, ' ').trim()
+    if (isCaveat(claim, words)) continue
     const said = answer !== undefined && hasQuote(answer, words) ? { said: words } : {}
     const support = SUPPORT[field(r, 's', 'support')]
     if (!support) {
@@ -688,15 +723,18 @@ export function resolve(reply: string, all: readonly Evidence[], fresh?: Readonl
       out.push({ claim, ...said, verdict: 'unverified', source: `the judge cited ${cited}, but its quote is not in there`, check, priority: priorityOf(r) })
       continue
     }
-    const now = ev.staleFile === undefined ? undefined : fresh?.get(ev.staleFile)
+    // Only a file the command wrote itself changed later, and the quote is in what it printed: that stands.
+    const isOwnOutput = ev.staleBy !== undefined && ev.staleRead === undefined && ev.inputChars !== undefined && !hasQuote(ev.full.slice(0, ev.inputChars), quote)
+    const held = isOwnOutput ? { ...ev, staleBy: undefined, staleFile: undefined } : ev
+    const now = held.staleFile === undefined ? undefined : fresh?.get(held.staleFile)
     const isStillThere = now !== undefined && hasQuote(now, quote)
     const verdict: Verdict =
       support === 'contradicted'
         ? 'contradicted'
         : support === 'inferred'
           ? 'inferred'
-          : provenance(ev, r.v === 1 || r.v === true || r.volatile === true, isStillThere)
-    out.push({ claim, ...said, verdict, source: where(ev, quote, isStillThere), check, priority: priorityOf(r) })
+          : provenance(held, r.v === 1 || r.v === true || r.volatile === true, isStillThere)
+    out.push({ claim, ...said, verdict, source: where(held, quote, isStillThere), check, priority: priorityOf(r) })
   }
 
   for (const r of raw.assumptions) {
@@ -717,6 +755,7 @@ export function doubted(reply: string, all: readonly Evidence[]): Doubt[] {
   const byRef = new Map(all.map(e => [e.ref, e]))
 
   return raw.claims.flatMap((r, at) => {
+    if (isCaveat(field(r, 'c', 'claim'), field(r, 'a', 'said'))) return []
     const ev = byRef.get(field(r, 'r', 'ref'))
     const isHeld = SUPPORT[field(r, 's', 'support')] !== undefined && ev !== undefined && hasQuote(ev.full, field(r, 'q', 'quote'))
 
