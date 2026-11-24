@@ -67,6 +67,7 @@ fake key.
 - A push it cannot read (git fails, or the changes are over 4 MiB) is refused when it goes to a
   guarded place, and goes on with a notice anywhere else.
 - An added line that itself begins with `++` reads as a diff header and is skipped.
+- A command with no `cd` or `-C` of its own is read as running in the session's folder.
 - Switch it off under Outbound guard in the Mods panel.
 
 ## Measured
