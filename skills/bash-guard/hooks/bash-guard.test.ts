@@ -35,6 +35,11 @@ test('a search of the Claude Code binary, the whole home folder or the disk is r
   const w = world(on)
   expect(await w.bash($, 'grep -a -o "uuid?: string" "$CLAUDE_CODE_EXECPATH" | head -5')).toContain('reads the Claude Code binary')
   expect(await w.bash($, 'strings /Applications/Claude.app/Contents/MacOS/claude | grep x')).toContain('an app bundle')
+  // The binary's own folder holds it: a search built from its path is the same read.
+  expect(await w.bash($, 'rg foo "$(dirname "$CLAUDE_CODE_EXECPATH")"')).toContain('reads the Claude Code binary')
+  expect(await w.bash($, 'grep -rn foo "$(dirname $CLAUDE_CODE_EXECPATH)"')).toContain('reads the Claude Code binary')
+  expect(await w.bash($, 'grep -rn foo "$CLAUDE_CODE_EXECPATH"/..')).toContain('reads the Claude Code binary')
+  expect(await w.bash($, 'strings "${CLAUDE_CODE_EXECPATH}"')).toContain('reads the Claude Code binary')
   expect(await w.bash($, 'grep -rn "TODO" ~')).toContain('searches the whole home folder')
   expect(await w.bash($, 'rg -l secret /home/u/')).toContain('searches the whole home folder')
   expect(await w.bash($, 'find / -name "*.log"')).toContain('walks the whole disk')
@@ -45,9 +50,10 @@ test('a search of the Claude Code binary, the whole home folder or the disk is r
   expect(await w.bash($, 'ls -la ~ && echo "$CLAUDE_CODE_EXECPATH"')).toBeUndefined()
   // A file next to the binary is not the binary.
   expect(await w.bash($, 'grep -n hover "$CLAUDE_CODE_EXECPATH"/../types.d.ts')).toBeUndefined()
+  expect(await w.bash($, 'grep -n hover "${CLAUDE_CODE_EXECPATH}"/../types.d.ts')).toBeUndefined()
   // A here-document's body is text, not a command.
   expect(await w.bash($, "cat > notes.md <<'EOF'\ngrep -rn x ~\nEOF")).toBeUndefined()
-  expect(w.ran).toHaveLength(5)
+  expect(w.ran).toHaveLength(6)
 })
 
 test('a huge file read whole is refused; the same file through head goes on', async ($, on) => {

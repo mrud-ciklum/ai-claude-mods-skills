@@ -23,6 +23,15 @@ export const parts = (command: string) =>
 // ("$X"/a is one word), the quotes taken off.
 const words = (part: string) => part.match(/(?:"[^"]*"|'[^']*'|[^\s"'])+/g)?.map(w => w.replace(/(["'])(.*?)\1/g, '$2')) ?? []
 
+// The Claude Code binary's path, and what a word adds right after it.
+const EXECPATH = /\$(?:\{CLAUDE_CODE_EXECPATH\}|CLAUDE_CODE_EXECPATH\b)([^\s"'`)]*)/g
+// A file named from that path: a further path whose last part has an extension (`/../types.d.ts`).
+const NAMES_FILE = /^\/(?:.*\/)?[^/]*\.[A-Za-z0-9]+$/
+
+// A word that reads the binary or a folder built from its path (`$(dirname …)`, `/..`): its own
+// folder holds the binary. Only a file named next to it reads like any other file.
+const readsBinary = (word: string) => [...word.matchAll(EXECPATH)].some(m => !NAMES_FILE.test(m[1] ?? ''))
+
 // The home folder or the disk's root, as a command may name them.
 const isWideRoot = (path: string, home: string | undefined) =>
   path === '/' || path === '~' || path === '~/' || path === '$HOME' || path === '${HOME}' || path === '$HOME/' || (home !== undefined && (path === home || path === `${home}/`))
@@ -33,9 +42,7 @@ export function heavyReasons(command: string, home: string | undefined): string[
   for (const part of parts(command)) {
     const argv = words(part)
     const name = (argv[0] ?? '').replace(/^.*\//, '')
-    // The binary itself, not a path built from it (a file next to it is a file like any other).
-    const isBinary = (w: string) => /^\$\{?CLAUDE_CODE_EXECPATH\}?$/.test(w)
-    if (READERS.test(name) && argv.some(w => isBinary(w) || /\.app\/Contents\/(?:MacOS|Resources)\//.test(w)))
+    if (READERS.test(name) && argv.some(w => readsBinary(w) || /\.app\/Contents\/(?:MacOS|Resources)\//.test(w)))
       out.push(`\`${name}\` reads the Claude Code binary or an app bundle, hundreds of megabytes: it runs for minutes. Read the docs or the types the CLI writes instead.`)
     const isRecursive = name === 'rg' || name === 'ag' || ((name === 'grep' || name === 'egrep') && argv.some(w => /^-[A-Za-z]*[rR][A-Za-z]*$|^--recursive$|^--dereference-recursive$/.test(w)))
     if (isRecursive && argv.slice(1).some(w => isWideRoot(w, home)))
