@@ -1,0 +1,9 @@
+{
+  "order": 23,
+  "group": "Readings",
+  "title": "Side-model cost",
+  "summary": "Today's model calls made by mods: tokens and time per mod, with a daily cap that stops them",
+  "settings": [
+    { "key": "cap", "label": "Daily cap", "options": ["off", "500k", "1M", "2M", "5M"], "default": "off" }
+  ]
+}

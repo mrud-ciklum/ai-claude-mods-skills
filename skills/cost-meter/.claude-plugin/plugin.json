@@ -1,0 +1,9 @@
+{
+  "name": "cost-meter",
+  "version": "0.1.0",
+  "description": "Counts the model calls mods make (a judge, a second look), per mod and per day, shows today's tokens above the prompt and in the Mods panel, and stops them at a daily cap.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

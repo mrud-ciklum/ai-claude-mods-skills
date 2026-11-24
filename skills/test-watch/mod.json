@@ -1,0 +1,6 @@
+{
+  "order": 24,
+  "group": "Checks",
+  "title": "Test watch",
+  "summary": "After a turn that edited a mod's files, runs that mod's tests and shows the result above the prompt"
+}

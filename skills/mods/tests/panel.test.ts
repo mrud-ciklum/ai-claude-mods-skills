@@ -460,3 +460,16 @@ test('cards that name a group are listed in sections: Readings, Conversation, Ch
   expect(texts).toContain('1 of 1 on')
   await pane.unmount()
 })
+
+test("a mod's model calls today, as cost-meter counts them, show under its row", async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-11-24T12:00:00Z') })
+  const files = installed()
+  files.set(`${HOME}/.claude/mods/side-models.json`, JSON.stringify({ '2026-11-24': { 'context-band': { calls: 12, input: 220_000, output: 9_500, ms: 1 } }, '2026-11-23': { 'mod-limits': { calls: 1, input: 1, output: 1, ms: 1 } } }))
+  answerWorld(on, clock, files)
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  const pane = await $.ui.mount({ plugin: 'mods', surface: 'desktop', ...PANE })
+  const texts = (await pane.findAll({ type: 'Text' })).map(found => found.text)
+  expect(texts).toContain('Today: 230k tokens in 12 model calls')
+  expect(texts.filter(text => text.startsWith('Today:'))).toHaveLength(1)
+  await pane.unmount()
+})

@@ -52,6 +52,8 @@ declare module 'claude-code' {
       isPaneShown: boolean
       isSectionOpen: boolean
       models: string[]
+      // Today's model calls each mod made, as cost-meter counts them in ~/.claude/mods/side-models.json.
+      sideModels: Record<string, { calls: number; tokens: number }>
     }
   }
 }

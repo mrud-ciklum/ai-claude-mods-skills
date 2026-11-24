@@ -28,6 +28,11 @@
       "description": "A one-line band above the prompt that always shows how full the context window is."
     },
     {
+      "name": "cost-meter",
+      "source": "./skills/cost-meter",
+      "description": "Counts the model calls mods make (a judge, a second look), per mod and per day, shows today's tokens above the prompt and in the Mods panel, and stops them at a daily cap."
+    },
+    {
       "name": "mod-compact-marks",
       "source": "./skills/mod-compact-marks",
       "description": "Says how full the context was before and after each compaction: under /compact's output, and in a toast for an automatic one."
@@ -113,9 +118,19 @@
       "description": "Stops a command that sends text out of this machine (a gh or glab post, a git push) when that text breaks a rule: an inline body, an em dash, an @-mention nobody approved, a key, or a client's name bound for a public repository."
     },
     {
+      "name": "resume-card",
+      "source": "./skills/resume-card",
+      "description": "At the start of a session, shows above the prompt how the last session in the same folder ended: the summary it left (what changed, what is open), with the ones before it a press away."
+    },
+    {
       "name": "retry-stop",
       "source": "./skills/retry-stop",
       "description": "Refuses a shell command that has just failed twice in a row with no file edited between, so the model changes something before running it again."
+    },
+    {
+      "name": "test-watch",
+      "source": "./skills/test-watch",
+      "description": "After a turn that edited the files of a mod (a folder with .claude-plugin/plugin.json), runs that mod's tests in the background and shows the result above the prompt."
     }
   ]
 }

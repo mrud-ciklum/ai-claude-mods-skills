@@ -1,0 +1,9 @@
+{
+  "name": "resume-card",
+  "version": "0.1.0",
+  "description": "At the start of a session, shows above the prompt how the last session in the same folder ended: the summary it left (what changed, what is open), with the ones before it a press away.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

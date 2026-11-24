@@ -1,0 +1,9 @@
+{
+  "name": "test-watch",
+  "version": "0.1.0",
+  "description": "After a turn that edited the files of a mod (a folder with .claude-plugin/plugin.json), runs that mod's tests in the background and shows the result above the prompt.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

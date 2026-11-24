@@ -54,6 +54,27 @@ const isPaneShown = atom({ plugin: 'mods', key: 'isPaneShown' } as const, false)
 const isSectionOpen = atom({ plugin: 'mods', key: 'isSectionOpen' } as const, false)
 // The models a `models` setting offers, read from the /config menu when the mods are scanned.
 const models = atom({ plugin: 'mods', key: 'models' } as const, [...FALLBACK_MODELS, ...PINNED_MODELS])
+// Today's model calls by mod, from the file cost-meter keeps: shown under each mod's row.
+const sideModels = atom({ plugin: 'mods', key: 'sideModels' } as const, {} as Record<string, { calls: number; tokens: number }>)
+const SIDE_MODELS_FILE = '.claude/mods/side-models.json'
+
+// Today's counts from cost-meter's file; nothing when the file or today is not there.
+async function loadSideModels($: EngineInterface): Promise<void> {
+  const path = await homePath($, SIDE_MODELS_FILE)
+  const day = new Date(await $.clock.now()).toISOString().slice(0, 10)
+  const data = await readJson($, path)
+  const today = data?.[day]
+  const out: Record<string, { calls: number; tokens: number }> = {}
+  if (typeof today === 'object' && today !== null) {
+    for (const [mod, tally] of Object.entries(today as Record<string, Record<string, unknown>>)) {
+      const n = (key: string) => (typeof tally[key] === 'number' ? (tally[key] as number) : 0)
+      out[mod] = { calls: n('calls'), tokens: n('input') + n('output') }
+    }
+  }
+  if (JSON.stringify(out) !== JSON.stringify(await read($, sideModels))) await update($, sideModels, () => out)
+}
+
+const shortTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : `${n}`)
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -253,6 +274,7 @@ export const register: Register = on => {
     const onCount = switchable.filter(mod => isOn(current, mod.name)).length
     const allOn = onCount === switchable.length
     const modelChoices = await read($, models)
+    const spent = await read($, sideModels)
 
     // A mod's own choices, its card's settings, under its row where the surface draws a select.
     const modSettingsRow = (mod: ModEntry) => {
@@ -323,6 +345,11 @@ export const register: Register = on => {
               <Text dimColor>{mod.summary}</Text>
             </Box>
           )}
+          {spent[mod.name] ? (
+            <Box marginLeft={5}>
+              <Text dimColor>{`Today: ${shortTokens(spent[mod.name]?.tokens ?? 0)} tokens in ${spent[mod.name]?.calls ?? 0} model ${spent[mod.name]?.calls === 1 ? 'call' : 'calls'}`}</Text>
+            </Box>
+          ) : null}
           {modSettingsRow(mod)}
         </Box>
       )
@@ -710,6 +737,7 @@ async function rescan($: EngineInterface): Promise<void> {
     if (found.some(mod => (mod.settings ?? []).some(setting => setting.options === 'models'))) {
       await loadModels($)
     }
+    await loadSideModels($).catch(() => undefined)
     const before = await read($, mods)
     if (JSON.stringify(before) !== JSON.stringify(found)) {
       await update($, mods, () => found)

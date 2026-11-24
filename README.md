@@ -39,6 +39,9 @@ a `SKILL.md`) as a skill. Installing means linking these folders there.
 | 19 | `bash-guard` | Guards | Bash guard | Stops a command that would hang on a huge file, a binary or the whole disk, and a background test run without set -euo pipefail and a git SHA |
 | 20 | `agent-preview` | Guards | Agent preview | Shows a background agent's or a workflow's prompt and launches it only when you press Launch |
 | 21 | `retry-stop` | Guards | Retry stop | Refuses the third run of a command that failed twice in a row with no edit between |
+| 22 | `resume-card` | Readings | Resume card | At the start of a session, the last session in this folder: what it did and what it left open |
+| 23 | `cost-meter` | Readings | Side-model cost | Today's model calls made by mods: tokens and time per mod, with a daily cap that stops them |
+| 24 | `test-watch` | Checks | Test watch | After a turn that edited a mod's files, runs that mod's tests and shows the result above the prompt |
 
 The Mods panel lists them by group: Readings (above the prompt), Conversation (how the
 conversation looks), Checks (of the answers) and Guards (of what leaves the machine).
