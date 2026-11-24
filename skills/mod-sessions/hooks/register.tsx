@@ -141,19 +141,11 @@ export const register: Register = on => {
       const state = stateOf(card, isHere, now)
       const branch = branchOf[card.cwd]
       const live = card.runners.filter(runner => runner.endedAt === null).length
-      const word = !isHere && isWaiting(card) ? lastWord(card) : null
+      const doing = statusLine(card, isHere)
+      // Where it is, then one line on what it does or waits for: what the session itself said, not the prompt it was sent.
       const lines = [
         { text: [baseName(card.cwd), branch].filter(Boolean).join(' · '), isBold: isHere },
-        {
-          text:
-            card.task !== null
-              ? `${card.task.title} · ${card.task.percent}%`
-              : card.asked !== undefined && card.asked !== null && card.asked !== ''
-                ? `asked: "${card.asked}"`
-                : 'no task',
-          isDim: true,
-        },
-        ...(word === null ? [] : [{ text: word }]),
+        ...(doing === null ? [] : [{ text: doing.text, isDim: !doing.isAsking }]),
         ...(live === 0 ? [] : [{ text: `${live} ${plural(live, 'runner', 'runners')}`, isDim: true }]),
         ...(shared.has(card.cwd) ? [{ text: '⚠ this folder is open in another session too', color: 'warning' as const }] : []),
       ]
@@ -165,10 +157,9 @@ export const register: Register = on => {
             {
               name: state.label,
               nameColor: state.tone,
+              // The context it fills, as a figure alone: the band draws no bars.
               figure: card.fill === undefined || card.fill === null ? '' : `${card.fill}%`,
               color: fillTone(card.fill ?? null),
-              percent: card.fill ?? 0,
-              barColor: card.fill === undefined || card.fill === null ? 'inactive' : fillTone(card.fill),
               lines,
             },
             columns,
@@ -394,21 +385,31 @@ function awayDigest(found: readonly SessionCard[], here: string, since: number):
   const dead = ended.filter(isDead).length
   const done = ended.length - dead
   const finished = found.filter(card => card.sessionId !== here && isWaiting(card) && (card.turn?.since ?? 0) >= since)
-  const named = finished.slice(0, DIGEST_NAMES).map(sessionName).join('; ')
-  const more = finished.length - DIGEST_NAMES
   const parts = [
-    finished.length === 0
-      ? ''
-      : `${finished.length} ${plural(finished.length, 'session finished and waits', 'sessions finished and wait')} for your answer: ${named}${more > 0 ? ` and ${more} more` : ''}`,
+    finished.length === 0 ? '' : `${finished.length} ${plural(finished.length, 'session waits', 'sessions wait')} for you: ${folderNames(finished)}`,
     done === 0 ? '' : `${done} ${plural(done, 'runner done', 'runners done')}`,
     dead === 0 ? '' : `${dead} ${plural(dead, 'runner died', 'runners died')}`,
   ].filter(Boolean)
   if (parts.length === 0) {
     return null
   }
-  const where = finished.length > 0 ? 'The list with details is in the band above the prompt, Sessions section.' : 'Details: the Runners button in the band.'
+  // One line that fits a toast: who waits, by folder; what each one asks is in the Sessions section.
+  const where = finished.length > 0 ? 'See Sessions in the band.' : 'See Runners in the band.'
 
-  return { text: `While you were away: ${parts.join(' · ')}. ${where}`, hasSessions: finished.length > 0 }
+  return { text: `${parts.join(' · ')}. ${where}`, hasSessions: finished.length > 0 }
+}
+
+// The folders of `cards`, each once, with a count where several sessions share one: "app, trial ×2".
+function folderNames(cards: readonly SessionCard[]): string {
+  const counts = new Map<string, number>()
+  for (const card of cards) {
+    const name = baseName(card.cwd)
+    counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  const named = [...counts].slice(0, DIGEST_NAMES).map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+  const more = counts.size - DIGEST_NAMES
+
+  return `${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
 }
 
 // A session that finished a turn and now waits for the person; one that never
@@ -417,11 +418,31 @@ function isWaiting(card: SessionCard): boolean {
   return card.turn !== undefined && !card.turn.isWorking && card.turn.since > 0
 }
 
-// A session as the person knows it: its folder and what it works on, or was last asked.
+// A session as the person knows it: its folder, and the task it reported when it reported one.
 function sessionName(card: SessionCard): string {
-  const subject = card.task?.title ?? card.asked ?? null
+  return card.task === null ? baseName(card.cwd) : `${baseName(card.cwd)} "${card.task.title}"`
+}
 
-  return subject === null ? baseName(card.cwd) : `${baseName(card.cwd)} "${subject}"`
+// What a session does or waits for, in one line: this one's task; a waiting one's last word; a
+// working one's task, else what it was asked. Null when there is nothing to say.
+function statusLine(card: SessionCard, isHere: boolean): { text: string; isAsking: boolean } | null {
+  const task = card.task === null ? null : `${card.task.title} · ${card.task.percent}%`
+  if (isHere) {
+    return task === null ? null : { text: task, isAsking: false }
+  }
+  if (isWaiting(card)) {
+    const word = lastWord(card)
+
+    return word === null ? null : { text: word, isAsking: word.startsWith('asks: ') }
+  }
+  if (card.turn?.isWorking === true) {
+    const asked = card.asked === undefined || card.asked === null || card.asked === '' ? null : `working on: "${card.asked}"`
+    const text = task ?? asked
+
+    return text === null ? null : { text, isAsking: false }
+  }
+
+  return null
 }
 
 // How a waiting session's last turn ended, in a line: its answer's gist, or why it stopped.
@@ -436,7 +457,11 @@ function lastWord(card: SessionCard): string | null {
     return 'the model refused to answer'
   }
 
-  return card.said === undefined || card.said === null || card.said === '' ? null : `answered: ${card.said}`
+  if (card.said === undefined || card.said === null || card.said === '') {
+    return null
+  }
+
+  return card.said.trim().endsWith('?') ? `asks: ${card.said}` : `done: ${card.said}`
 }
 
 function isDead(runner: SessionRunner): boolean {
@@ -448,9 +473,12 @@ function isDead(runner: SessionRunner): boolean {
   return targets.some(target => DEAD_WORDS.has(target.status)) && !targets.some(target => DONE_WORDS.has(target.status))
 }
 
-// This session first, then the ones waiting longest, then the ones at work, then the idle.
+// This session first, then the waiting ones (those that ask a question before the rest, the
+// longest waiting first), then the ones at work, then the idle.
 function orderSessions(list: readonly SessionCard[], here: string): SessionCard[] {
-  const rank = (card: SessionCard) => (card.sessionId === here ? 0 : isWaiting(card) ? 1 : card.turn?.isWorking === true ? 2 : 3)
+  const isAsking = (card: SessionCard) => lastWord(card)?.startsWith('asks: ') === true
+  const rank = (card: SessionCard) =>
+    card.sessionId === here ? 0 : isWaiting(card) ? (isAsking(card) ? 1 : 2) : card.turn?.isWorking === true ? 3 : 4
 
   return [...list].sort((a, b) => rank(a) - rank(b) || (a.turn?.since ?? 0) - (b.turn?.since ?? 0))
 }

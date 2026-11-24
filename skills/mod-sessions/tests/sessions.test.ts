@@ -94,7 +94,7 @@ async function drawnTexts(ui: { findAll: (query: ElementQuery) => Promise<FoundE
   return (await ui.findAll({})).filter(found => found.type === 'Text' || found.type === 'Button').map(found => found.text)
 }
 
-test('the section lists every live session: this one first, then who waits longest with what it answered, then the idle ones', { plugins: [BAND_ROW] }, async ($, on) => {
+test('the section lists every live session: this one first, then who waits with what it asks, then the working and the idle ones', { plugins: [BAND_ROW] }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = answerWorld(on, clock)
   world.write(`${REGISTRY}/sess-here.json`, card('sess-here', '/work/app', { fill: 32, task: { title: 'Mod 0', percent: 45 }, turn: { isWorking: true, since: NOW - MINUTE } }))
@@ -136,13 +136,11 @@ test('the section lists every live session: this one first, then who waits longe
       '71%',
       'trial · fix/123',
       'new · feat/rel',
-      'Rescore #123 · 80%',
-      'answered: Rescore done: +0.004 score. Publish the delta?',
+      'asks: Rescore done: +0.004 score. Publish the delta?',
       '1 runner',
       '● working',
-      'asked: "Check CI on #125"',
+      'working on: "Check CI on #125"',
       '○ idle',
-      'no task',
       '⚠ this folder is open in another session too',
       'Ask for a report',
       'Summarize this session',
@@ -152,6 +150,10 @@ test('the section lists every live session: this one first, then who waits longe
   expect(texts.indexOf('◌ wait 15m')).toBeLessThan(texts.indexOf('● working'))
   expect(texts.indexOf('● working')).toBeLessThan(texts.indexOf('○ idle'))
   expect(texts).not.toContain('old')
+  // One line on what each session does or waits for: no prompt quoted as a name, no task of a waiting one, no bar.
+  expect(texts).not.toContain('Rescore #123 · 80%')
+  expect(texts).not.toContain('no task')
+  expect(texts.join(' ')).not.toMatch(/[█░]/)
   expect((await ui.find({ type: 'Text', text: '◌ wait 15m' }))?.props.color).toBe('warning')
 
   await ui.press({ key: 'report:sess-a' })
@@ -181,7 +183,7 @@ test('a session that worked a while and came to rest is announced once, with one
   )
   world.write(`${REGISTRY}/sess-b.json`, card('sess-b', '/work/quick', { updatedAt: clock.now(), turn: { isWorking: false, since: clock.now() } }))
   await clock.advance(15_000)
-  expect(world.toasts).toEqual(['◌ trial "Rescore #123" finished and waits for you - answered: Publish the delta on #123?'])
+  expect(world.toasts).toEqual(['◌ trial "Rescore #123" finished and waits for you - asks: Publish the delta on #123?'])
   expect(world.played).toEqual(['sounds/waiting.aiff'])
 
   await clock.advance(15_000)
@@ -209,15 +211,17 @@ test('the first prompt after half an hour away names the sessions that finished 
       ],
     }),
   )
+  // A second session in the same folder: counted by the folder, not quoted by its prompt.
+  world.write(`${REGISTRY}/sess-d.json`, card('sess-d', '/work/trial', { updatedAt: now, turn: { isWorking: false, since: now - 2 * MINUTE }, asked: 'Так, зливай обидва', said: 'Merged both.' }))
   // Resting since before the absence, or never run: not news, not named.
   world.write(`${REGISTRY}/sess-b.json`, card('sess-b', '/work/early', { updatedAt: now, turn: { isWorking: false, since: NOW - 5 * MINUTE } }))
   world.write(`${REGISTRY}/sess-c.json`, card('sess-c', '/work/new', { updatedAt: now, turn: { isWorking: false, since: 0 } }))
   const ui = await $.ui.mount({ plugin: 'mod-sessions', surface: 'desktop', ...BAND })
   await $.prompt.submit({ text: 'back', wait: false, origin: { kind: 'composer' } })
-  expect(world.toasts).toContain(
-    'While you were away: 1 session finished and waits for your answer: trial "Rescore #123" · 1 runner done · 1 runner died. The list with details is in the band above the prompt, Sessions section.',
-  )
-  expect(await drawnTexts(ui)).toEqual(expect.arrayContaining(['Sessions', 'trial', 'asked: "Rescore #123"']))
+  // One line: who waits, by folder, then what the runners did; no prompt quoted.
+  expect(world.toasts).toContain('2 sessions wait for you: trial ×2 · 1 runner done · 1 runner died. See Sessions in the band.')
+  expect(world.toasts.join(' ')).not.toContain('Rescore #123')
+  expect(await drawnTexts(ui)).toEqual(expect.arrayContaining(['Sessions', 'trial', 'done: Merged both.']))
 })
 
 test('the summary asks a small model for five points, shows them and copies them', { plugins: [BAND_ROW] }, async ($, on) => {
