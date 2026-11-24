@@ -1,15 +1,18 @@
 # test-watch
 
 A Claude Code mod that runs a mod's tests after a turn that edited its files, and shows the result
-in one line above the prompt.
+in the band above the prompt.
 
 ## What it does
 
 - It notes the files each Edit and Write of a turn changed. When the turn ends, it finds the mod
   each file belongs to (the nearest folder above it with `.claude-plugin/plugin.json`) and runs
   `claude plugin test <folder>` for each such mod, one after the other, in the background.
-- The line shows each mod's last run: `claim-check 41 ✓`, `outbound-guard 19/20 ✗`, or
-  `running…`. Why opens a pane with the failing tests; Hide clears the line.
+- While the tests pass or run, it is one chip on the band's line: `Tests 45 ✓`, or `Tests …`
+  while a run is going.
+- When some fail, it is a row instead: `Tests 1 ✗` and each mod's last run
+  (`claim-check 41 ✓ · outbound-guard 19/20`). Why opens a pane with the failing tests; Hide
+  clears the row.
 
 Switch it off under Test watch in the Mods panel.
 

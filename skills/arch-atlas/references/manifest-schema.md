@@ -1,4 +1,4 @@
-# atlas-manifest.json — schema and example
+# atlas-manifest.json - schema and example
 
 The manifest is the single source of truth for the whole atlas. The markdown notes
 and the HTML both render from it; if a fact is not in the manifest, it does not
@@ -9,8 +9,8 @@ exist for the atlas. Keep it hand-editable: stable ids, no generated noise.
 ```json
 {
   "atlas_version": 1,
-  "project": "string — repo or system name",
-  "scope": "string — what slice this atlas covers, in one sentence",
+  "project": "string - repo or system name",
+  "scope": "string - what slice this atlas covers, in one sentence",
   "generated_from": {
     "git_sha": "abc1234",
     "date": "2026-08-17",
@@ -42,7 +42,7 @@ The units of flow. One journey each, 1–3 total.
 }
 ```
 
-`color` is the particle's identity in the map and the trace — keep it stable
+`color` is the particle's identity in the map and the trace - keep it stable
 across refreshes.
 
 ## external
@@ -105,16 +105,16 @@ The heart of the manifest. One entry per node on the map.
 
 Field notes:
 
-- **`anchors[].claim`** — the specific sentence that anchor proves. One claim per
+- **`anchors[].claim`** - the specific sentence that anchor proves. One claim per
   anchor. This is what the Phase 2 gate re-checks and what the Phase 4 refresh
   re-resolves.
-- **`pos`** — map coordinates. Part of the knowledge (spatial memory); refreshes
+- **`pos`** - map coordinates. Part of the knowledge (spatial memory); refreshes
   keep them. New stages get positions that don't displace existing ones.
-- **`config[].effective`** — a real value with a named source, or the literal
+- **`config[].effective`** - a real value with a named source, or the literal
   string `"unverified"`. Nothing in between.
-- **`metrics_hook`** — where trace mode gets real numbers, or `"none"`.
-- **`verification.verdict`** — `verified` | `partial` | `unverifiable`. A stage
-  whose every claim was refuted has no verdict — it has no place in the manifest.
+- **`metrics_hook`** - where trace mode gets real numbers, or `"none"`.
+- **`verification.verdict`** - `verified` | `partial` | `unverifiable`. A stage
+  whose every claim was refuted has no verdict - it has no place in the manifest.
 
 ## edges
 
@@ -127,12 +127,12 @@ Field notes:
 }
 ```
 
-Edges belong to a particle — that's what makes a coherent animated journey per
+Edges belong to a particle - that's what makes a coherent animated journey per
 particle in trace mode instead of one tangled graph.
 
 ## open_questions
 
-The visible residue of the Phase 2 gate — `unverifiable` claims and anything the
+The visible residue of the Phase 2 gate - `unverifiable` claims and anything the
 mapping surfaced but couldn't settle.
 
 ```json
@@ -148,7 +148,7 @@ mapping surfaced but couldn't settle.
 ## Validation checklist (run before Phase 3)
 
 - every stage has ≥1 anchor and a one-sentence `role`;
-- every `config[].effective` is a sourced value or `"unverified"` — no guesses;
+- every `config[].effective` is a sourced value or `"unverified"` - no guesses;
 - every edge's `from`/`to`/`particle` resolve to existing ids;
 - ≤ ~12 top-level nodes per subsystem view;
-- every open question has a `needs` — what would settle it.
+- every open question has a `needs` - what would settle it.

@@ -3,6 +3,8 @@ import type { MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { TurnStepResult } from 'claude-code'
 
+import { modelLabel } from '../hooks/register'
+
 const HOME = '/home/me'
 const NOW = 1_760_000_000_000
 
@@ -45,4 +47,13 @@ test('the footer shows the model, the effort and the modes as one badge', async 
   }
   await stream.result
   expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['Opus 5.5', 'effort max', 'focus'])
+})
+
+test('a model id reads as its family and version, without a date or a [1m] suffix', () => {
+  expect(modelLabel('claude-opus-5-5')).toBe('Opus 5.5')
+  expect(modelLabel('claude-fable-5-2')).toBe('Fable 5.2')
+  expect(modelLabel('claude-opus-5-5[1m]')).toBe('Opus 5.5')
+  expect(modelLabel('claude-sonnet-4-20250514')).toBe('Sonnet 4')
+  expect(modelLabel('claude-opus-4-1-20250805')).toBe('Opus 4.1')
+  expect(modelLabel('gpt-x')).toBe('gpt-x')
 })

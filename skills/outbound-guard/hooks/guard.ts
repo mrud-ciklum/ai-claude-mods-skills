@@ -96,7 +96,7 @@ const closeParen = (s: string, open: number): number => {
 // The command cut into simple commands at `&&`, `||`, `;`, `|`, `&`, newlines and parentheses,
 // each a list of words. A here-document's body is no command: it is kept apart, with the command
 // it feeds (`gh api --input - <<EOF`).
-// ponytail: a shell reader for what agents write, not a full one: no aliases, no `eval`.
+// Known limit: a shell reader for what agents write, not a full one: no aliases, no `eval`.
 export function segments(command: string): Segment[] {
   const out: Segment[] = []
   let cur: Segment = { words: [], heredocs: [] }
@@ -707,8 +707,12 @@ export function pushFindings(log: string, rules: Rules): string[] {
     })
     let file = ''
     let lineNo = 0
+    let prev = ''
     for (const line of diff.split('\n')) {
-      if (line.startsWith('+++ ')) {
+      // A file's header is `--- a` then `+++ b`; an added line that reads "++ x" also starts with "+++ ".
+      const isHeader = line.startsWith('+++ ') && prev.startsWith('--- ')
+      prev = line
+      if (isHeader) {
         file = line.slice(4).replace(/^b\//, '')
         if (rules.isGuarded) for (const term of rules.config.terms) if (termPattern(term).test(file)) out.push(`commit ${short} adds the file ${file}, whose name holds "${term}".`)
       } else if (line.startsWith('@@')) lineNo = Number(/\+(\d+)/.exec(line)?.[1] ?? '1')

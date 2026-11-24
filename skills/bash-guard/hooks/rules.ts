@@ -19,7 +19,9 @@ export const parts = (command: string) =>
     .map(part => part.trim())
     .filter(part => part !== '')
 
-const words = (part: string) => part.match(/"[^"]*"|'[^']*'|\S+/g)?.map(w => w.replace(/^(["'])(.*)\1$/, '$2')) ?? []
+// A part's words as the shell splits them: quoted runs joined to what touches them
+// ("$X"/a is one word), the quotes taken off.
+const words = (part: string) => part.match(/(?:"[^"]*"|'[^']*'|[^\s"'])+/g)?.map(w => w.replace(/(["'])(.*?)\1/g, '$2')) ?? []
 
 // The home folder or the disk's root, as a command may name them.
 const isWideRoot = (path: string, home: string | undefined) =>
@@ -31,7 +33,9 @@ export function heavyReasons(command: string, home: string | undefined): string[
   for (const part of parts(command)) {
     const argv = words(part)
     const name = (argv[0] ?? '').replace(/^.*\//, '')
-    if (READERS.test(name) && argv.some(w => /\$\{?CLAUDE_CODE_EXECPATH\}?|\.app\/Contents\/(?:MacOS|Resources)\//.test(w)))
+    // The binary itself, not a path built from it (a file next to it is a file like any other).
+    const isBinary = (w: string) => /^\$\{?CLAUDE_CODE_EXECPATH\}?$/.test(w)
+    if (READERS.test(name) && argv.some(w => isBinary(w) || /\.app\/Contents\/(?:MacOS|Resources)\//.test(w)))
       out.push(`\`${name}\` reads the Claude Code binary or an app bundle, hundreds of megabytes: it runs for minutes. Read the docs or the types the CLI writes instead.`)
     const isRecursive = name === 'rg' || name === 'ag' || ((name === 'grep' || name === 'egrep') && argv.some(w => /^-[A-Za-z]*[rR][A-Za-z]*$|^--recursive$|^--dereference-recursive$/.test(w)))
     if (isRecursive && argv.slice(1).some(w => isWideRoot(w, home)))

@@ -2,5 +2,5 @@
   "order": 3,
   "group": "Readings",
   "title": "Context forecast",
-  "summary": "Steps left to auto-compact, a sparkline of the fill and what the last step took"
+  "summary": "Steps left to auto-compact, the context each step adds and what the last step took"
 }

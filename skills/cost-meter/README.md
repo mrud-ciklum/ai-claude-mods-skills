@@ -12,8 +12,9 @@ row, and a daily cap can stop them.
   no prompt and no answer. Every session counts into it.
 - The Mods panel reads it: `Today: 230k tokens in 12 model calls` under a mod that made calls.
 - With a Daily cap set, a call made once the day's tokens reach the cap is not made: the calling
-  mod gets an unanswered result (`aborted`), and a notice names the mod. From 80% of the cap, a line
-  above the prompt shows the day's tokens against it.
+  mod gets an unanswered result (`aborted`), and a notice names the mod. From 80% of the cap, a chip in
+  the band shows the day's share of the cap (`Models 85%`); its card says the tokens and the mod
+  that spent the most.
 
 ## Settings
 

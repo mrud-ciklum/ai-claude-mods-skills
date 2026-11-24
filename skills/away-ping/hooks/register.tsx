@@ -11,12 +11,13 @@ const switchedOff = atom({ plugin: 'away-ping', key: 'switchedOff' } as const, [
 export const AFTER: Record<string, number> = { '1 min': 60_000, '5 min': 300_000, '15 min': 900_000 }
 
 // The question an answer ends with, when it ends with one: its last sentence, if that asks.
+// Markdown around it (a list mark, a quote, bold) is not part of the question.
 export function closingQuestion(answer: string): string | undefined {
   const prose = answer.replace(/```[\s\S]*?```/g, ' ').trim()
   const last = prose.split(/\n+/).filter(line => line.trim() !== '').at(-1)?.trim() ?? ''
-  const sentence = last.split(/(?<=[.!])\s+/).at(-1)?.trim() ?? ''
+  const sentence = (last.split(/(?<=[.!])\s+/).at(-1) ?? '').replace(/^[-*>\s]+/, '').replace(/^[*_]+|[*_]+$/g, '').trim()
 
-  return sentence.endsWith('?') ? sentence.replace(/^[-*>\s]+/, '').slice(0, 200) : undefined
+  return sentence.endsWith('?') ? sentence.slice(0, 200) : undefined
 }
 
 // A choice of this mod's own in the Mods panel, read when it is needed: the shared file's modSettings.

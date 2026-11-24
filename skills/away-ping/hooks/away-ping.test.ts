@@ -56,4 +56,5 @@ test('the closing question is the last sentence, if it asks', () => {
   expect(closingQuestion('Is it on? Yes, it is.')).toBeUndefined()
   expect(closingQuestion('Run:\n```\nwhat?\n```\nDone.')).toBeUndefined()
   expect(closingQuestion('- Merge now, or after a look?')).toBe('Merge now, or after a look?')
+  expect(closingQuestion('All green. **Merge it now?**')).toBe('Merge it now?')
 })

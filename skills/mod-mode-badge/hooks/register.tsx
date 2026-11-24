@@ -13,7 +13,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await watchSwitch($)
-    const name = await $.session.model()
+    const name = await $.session.model().catch(() => '')
     await update($, model, () => name)
 
     return started
@@ -50,15 +50,16 @@ export const register: Register = on => {
   })
 }
 
-// `claude-opus-5-5` reads as `Opus 5.5`.
-function modelLabel(id: string): string {
-  const found = /claude-([a-z]+)-(\d+)-(\d+)/.exec(id)
+// `claude-opus-5-5` reads as `Opus 5.5`, `claude-sonnet-4-20250514` as `Sonnet 4`: the date
+// and a `[1m]` suffix are not part of the name. An id of another shape shows as it is.
+export function modelLabel(id: string): string {
+  const found = /claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?=-\d{8}|\[|$)/.exec(id)
   if (found === null) {
     return id
   }
   const family = found[1] ?? ''
 
-  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${found[2]}.${found[3]}`
+  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${found[2]}${found[3] === undefined ? '' : `.${found[3]}`}`
 }
 
 // ---- mods switch (shared block) ----

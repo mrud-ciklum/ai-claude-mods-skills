@@ -2,5 +2,5 @@
   "order": 5,
   "group": "Readings",
   "title": "Mac",
-  "summary": "Free memory and agent slots from the launch gate, free disk space"
+  "summary": "Memory and disk in use; the card says what is free and how many agent slots the launch gate holds"
 }

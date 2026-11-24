@@ -6,6 +6,8 @@ declare module 'claude-code' {
       isQuiet: boolean
       switchedOff: string[]
       switchSeenAt: number
+      // The last shell command of each loop ("main" or an agent's id), and how many times in a row it failed.
+      streaks: Record<string, { command: string; failures: number }>
     }
   }
 }

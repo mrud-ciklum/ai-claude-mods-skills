@@ -30,7 +30,8 @@ export const register: Register = on => {
     const response = yield* next(e)
     if (e.agentId === undefined && response.usage !== null) {
       const usage: TurnUsage = response.usage
-      const window = (await $.session.usage()).context.window
+      // A usage that cannot be read leaves the figure unknown; the step goes on.
+      const window = await $.session.usage().then(usage => usage.context.window).catch(() => 0)
       const tokens = usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens
       await update($, percent, () => (window > 0 ? Math.round((tokens / window) * 100) : null))
     }

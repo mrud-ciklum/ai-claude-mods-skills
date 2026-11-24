@@ -67,7 +67,7 @@ test('switched off in the Mods panel, nothing is caught', { plugins: [BAND_ROW] 
 })
 
 test('what reads as a correction, and what does not', () => {
-  for (const text of ['ти знову забув', 'Я ж казав - без тире', 'не так, переробляй', 'You again forgot the tests', "that's not what I asked", 'Why did you push?'])
+  for (const text of ['ти знову забув', 'Я ж казав - без тире', 'не так, переробляй', 'знову не так', 'You again forgot the tests', "that's not what I asked", 'Why did you push?'])
     expect([text, soundsLikeCorrection(text)]).toEqual([text, true])
   for (const text of ['Так, публікуй', 'ні', 'Add a test for this', 'Не треба', 'знову запусти тести'])
     expect([text, soundsLikeCorrection(text)]).toEqual([text, false])

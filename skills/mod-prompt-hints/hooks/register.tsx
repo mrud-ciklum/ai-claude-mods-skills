@@ -89,13 +89,20 @@ async function readSessions($: EngineInterface): Promise<void> {
       if (file.kind !== 'file' || !file.name.endsWith('.json') || now - file.mtimeMs >= SILENT_AFTER_MS) {
         continue
       }
-      const entry = JSON.parse(await $.fs.read(`${dir}/${file.name}`)) as {
-        sessionId?: unknown
-        isEnded?: unknown
-        turn?: { isWorking?: unknown; since?: unknown }
-        runners?: Array<{ endedAt?: unknown; progress?: { targets?: Array<{ status?: unknown }> } | null }>
-      }
-      if (entry.isEnded === true) {
+      // One file caught half-written (or broken) is skipped; the others still count.
+      const entry = await $.fs
+        .read(`${dir}/${file.name}`)
+        .then(
+          text =>
+            JSON.parse(text) as {
+              sessionId?: unknown
+              isEnded?: unknown
+              turn?: { isWorking?: unknown; since?: unknown }
+              runners?: Array<{ endedAt?: unknown; progress?: { targets?: Array<{ status?: unknown }> } | null }>
+            },
+        )
+        .catch(() => null)
+      if (entry === null || typeof entry !== 'object' || entry.isEnded === true) {
         continue
       }
       if (entry.sessionId !== here && entry.turn?.isWorking === false && typeof entry.turn.since === 'number' && now - entry.turn.since >= WAITING_AFTER_MS) {

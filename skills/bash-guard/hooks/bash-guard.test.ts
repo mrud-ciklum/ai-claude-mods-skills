@@ -43,9 +43,11 @@ test('a search of the Claude Code binary, the whole home folder or the disk is r
   expect(await w.bash($, 'grep -rn "TODO" ~/code/app')).toBeUndefined()
   expect(await w.bash($, 'find ~ -maxdepth 2 -name "*.md"')).toBeUndefined()
   expect(await w.bash($, 'ls -la ~ && echo "$CLAUDE_CODE_EXECPATH"')).toBeUndefined()
+  // A file next to the binary is not the binary.
+  expect(await w.bash($, 'grep -n hover "$CLAUDE_CODE_EXECPATH"/../types.d.ts')).toBeUndefined()
   // A here-document's body is text, not a command.
   expect(await w.bash($, "cat > notes.md <<'EOF'\ngrep -rn x ~\nEOF")).toBeUndefined()
-  expect(w.ran).toHaveLength(4)
+  expect(w.ran).toHaveLength(5)
 })
 
 test('a huge file read whole is refused; the same file through head goes on', async ($, on) => {

@@ -14,7 +14,7 @@ const isOwnPrompt = atom({ plugin: 'lesson-catcher', key: 'isOwnPrompt' } as con
 // What a correction sounds like, in Ukrainian and English: the person tells the model it did
 // something again, or not as asked. A plain "no" or a new instruction is not one.
 const CORRECTION =
-  /(?:^|[\s,.!?«"(])(?:ти\s+знову|знову\s+ти|я\s+ж\s+(?:казав|просив|писав)|я\s+вже\s+(?:казав|просив|писав)|не\s+так[,.!]|не\s+те[,.!]|навіщо\s+ти|чого\s+ти\s+(?:знову|не)|ти\s+не\s+(?:зробив|перевірив|прочитав|послухав)|you\s+(?:did\s+it\s+)?again|i\s+(?:already\s+)?(?:told|asked)\s+you|that'?s\s+not\s+what\s+i|don'?t\s+do\s+that\s+again|stop\s+doing|why\s+did\s+you)/iu
+  /(?:^|[\s,.!?«"(])(?:ти\s+знову|знову\s+ти|я\s+ж\s+(?:казав|просив|писав)|я\s+вже\s+(?:казав|просив|писав)|не\s+так(?:[,.!?]|\s*$)|не\s+те(?:[,.!?]|\s*$)|навіщо\s+ти|чого\s+ти\s+(?:знову|не)|ти\s+не\s+(?:зробив|перевірив|прочитав|послухав)|you\s+(?:did\s+it\s+)?again|i\s+(?:already\s+)?(?:told|asked)\s+you|that'?s\s+not\s+what\s+i|don'?t\s+do\s+that\s+again|stop\s+doing|why\s+did\s+you)/iu
 
 export const soundsLikeCorrection = (text: string) => CORRECTION.test(` ${text.slice(0, 2_000)}`)
 
@@ -57,7 +57,6 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // One line above the prompt while a correction waits: Remember, or Dismiss.
   // One row in the band, on its grid, while a correction waits: Remember, or Dismiss.
   on('ui.render', { component: 'AbovePrompt', plugin: 'context-band' }, async ($, e, next) => {
     const inner = await next(e)
@@ -85,7 +84,14 @@ async function remember($: EngineInterface) {
   if (caught === null) return
   await update($, lesson, () => null)
   await update($, isOwnPrompt, () => true)
-  await $.prompt.submit({ text: rememberPrompt(caught.text) })
+  try {
+    await $.prompt.submit({ text: rememberPrompt(caught.text) })
+  } catch (error) {
+    // Not sent: the next prompt is the person's again, and the button comes back.
+    await update($, isOwnPrompt, () => false)
+    await update($, lesson, () => caught)
+    $.ui.toast(`lesson-catcher could not send the prompt: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 // ---- mods switch (shared block) ----
@@ -155,19 +161,20 @@ async function refreshSwitch($: EngineInterface): Promise<boolean> {
 
 // ---- band layout (shared block) ----
 // The engine runs the family's band hooks in an order no mod controls, so the
-// band (context-band) draws two keyed slots wherever it stands: METERS_SLOT
-// under its context row and SECTIONS_SLOT above its task row. A mod that finds
-// the band in what lies beneath it puts its piece into the slot; one that does
-// not stacks the piece around it, and the band, when it stands outside, moves
-// the stacked pieces into its slots. Pieces are keyed `meter:NN:<mod>` or
-// `section:NN:<mod>` (NN the mod's order), and a slot keeps them in key order.
-// CHIPS_SLOT, first in the middle, is one line of the readings at rest, each a
-// chip keyed `chip:NN:<mod>`; a reading's card, shown while the pointer is on
-// its chip, waits hidden in METERS_SLOT (placeReadings puts both).
+// band (context-band) draws three keyed slots in its middle wherever it stands:
+// CHIPS_SLOT, the one line of readings, each a chip keyed `chip:NN:<mod>`;
+// METERS_SLOT under it, for pieces keyed `meter:NN:<mod>` (a reading's card,
+// shown while the pointer is on its chip, waits hidden there: placeReadings puts
+// both); and SECTIONS_SLOT above the task row, for pieces keyed
+// `section:NN:<mod>`. NN is the mod's order, and a slot keeps its pieces in key
+// order. A mod that finds the band in what lies beneath it puts its piece into
+// the slot; one that does not stacks the piece around it, and the band, when it
+// stands outside, moves the stacked pieces into its slots.
 // When the person set the band's height, the slots sit in a middle keyed
-// `FIT_PREFIX<rows>` that keeps to that many rows: a piece put in refits it,
-// what runs past the end leaves from the bottom, a note keyed
-// `NOTE_PREFIX<rows out>` says how many rows are out, and blank rows fill the rest.
+// `FIT_PREFIX<rows>` that keeps to at most that many rows: a piece put in refits
+// it, what runs past the end leaves from the bottom, and a note keyed
+// `NOTE_PREFIX<rows out>` says how many rows are out. A band with less to show
+// is shorter, never padded.
 // The note is a button keyed SHOW_ALL_KEY whoever draws it: the band hears its
 // press and gives the height back to auto.
 // This block is pasted unchanged into each mod that draws in the band.
@@ -176,12 +183,9 @@ const METERS_SLOT = 'context-band:meters'
 const SECTIONS_SLOT = 'context-band:sections'
 const FIT_PREFIX = 'context-band:fit:'
 const NOTE_PREFIX = 'context-band:note:'
-const PAD_KEY = 'context-band:pad'
 const SHOW_ALL_KEY = 'band-show-all'
 // Cells between two chips on their line.
 const CHIP_GAP = 2
-// A blank row: a space no surface collapses.
-const BLANK_ROW = ' '
 // About the pixels of a row where a surface draws an Svg (the desktop's line).
 const SVG_ROW_PIXELS = 20
 
@@ -228,7 +232,7 @@ function placeInBand(ui: ElementTable, inner: RenderElement, slot: string, piece
 // figures, its tone saying when it needs a look. A chip with more to say has a
 // card, drawn hidden in METERS_SLOT and shown while the pointer is on the chip:
 // the reading's row without a bar. No reading grows into a row with a bar.
-type BandReading = { row: GridRow; chip: GridChip; needsLook: boolean }
+type BandReading = { row: GridRow; chip: GridChip }
 
 function placeReadings(
   ui: ElementTable,
@@ -298,29 +302,23 @@ function insertInto(ui: ElementTable, node: unknown, slot: string, piece: unknow
 }
 
 // The band's middle in at most `rows` rows: what it holds from the top while it
-// fits, then a note of the rows left out. A column
-// that runs past the end is cut inside; the slots stay, empty if need be, so a
-// mod placing later still finds them, and the engine's own nodes always stay:
-// a surface draws its part there. A middle fitted before keeps its count.
+// fits, then a note of the rows left out. A column that runs past the end is cut
+// inside; the slots stay, empty if need be, so a mod placing later still finds
+// them, and the engine's own nodes always stay: a surface draws its part there.
+// A middle fitted before keeps its count.
 function fitBand(ui: ElementTable, middle: unknown, rows: number, columns: number): RenderElement {
-  const { Box, Button, Text } = ui
+  const { Box, Button } = ui
   const tree = (typeof middle === 'object' && middle !== null ? middle : {}) as TreeNode
   const all = flatNodes(Array.isArray(tree.children) ? tree.children : [])
   const noteKey = all.map(keyOf).find(key => key?.startsWith(NOTE_PREFIX) === true)
   const outBefore = noteKey === undefined ? 0 : Number(noteKey.slice(NOTE_PREFIX.length)) || 0
-  const content = all.filter(child => {
-    const key = keyOf(child)
-
-    return key !== PAD_KEY && key?.startsWith(NOTE_PREFIX) !== true
-  })
+  const content = all.filter(child => keyOf(child)?.startsWith(NOTE_PREFIX) !== true)
   const room = Math.max(0, rows)
   const total = rowsOf(content, columns)
   const isWhole = outBefore === 0 && total <= room
   const cut = isWhole ? { kept: content, used: total } : trimRows(content, Math.max(0, room - 1), columns)
   const out = outBefore + total - cut.used
   const noteRows = out > 0 && room > 0 ? 1 : 0
-  // The set height is a ceiling, not a floor: a band with less to show is shorter, never padded.
-  const blank = 0
 
   return (
     <Box key={`${FIT_PREFIX}${room}`} flexDirection="column">
@@ -332,11 +330,6 @@ function fitBand(ui: ElementTable, middle: unknown, rows: number, columns: numbe
           </Button>
         </Box>
       )}
-      <Box key={PAD_KEY} flexDirection="column">
-        {Array.from({ length: blank }, () => (
-          <Text>{BLANK_ROW}</Text>
-        ))}
-      </Box>
     </Box>
   )
 }

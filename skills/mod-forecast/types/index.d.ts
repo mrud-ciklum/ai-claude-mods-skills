@@ -13,12 +13,8 @@ declare module 'claude-code' {
       switchSeenAt: number
       isQuiet: boolean
       switchedOff: string[]
-      /** The fill after each main-loop step, as a percent of the window, oldest first. */
-      points: number[]
       /** The tokens the last main-loop step was answered over. */
       tokens: number | null
-      /** The session model's window. */
-      window: number | null
       /** Where auto-compaction starts, in tokens; null when it is off or not yet read. */
       compactAt: number | null
       /** When compactAt was last read, epoch milliseconds. */

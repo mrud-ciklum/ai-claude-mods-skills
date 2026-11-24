@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { LOG_FORMAT, NO_CONFIG, lineFindings, parseConfig, place, plan, segments, textFindings } from './guard'
+import { LOG_FORMAT, NO_CONFIG, lineFindings, parseConfig, place, plan, pushFindings, segments, textFindings } from './guard'
 
 // Fake keys are put together here, so this file never holds a key's own shape.
 const TOKEN = ['gh', 'p_'].join('') + 'Ab1Cd2Ef3'.repeat(4)
@@ -313,4 +313,10 @@ test('the reader: places, here-documents, here-strings and marked lines', () => 
   const listed = { config: { ...NO_CONFIG, mentions: ['me_corp'] }, isGuarded: false }
   expect(textFindings({ label: 'the body', text: 'Thanks @me_corp.' }, listed)).toEqual([])
   expect(textFindings({ label: 'the body', text: 'Thanks @me_other.' }, listed)[0]).toContain('@me_other would be notified')
+})
+
+test('an added line that reads "++ x" is a line of the file, not a file header, and is read', () => {
+  const key = ['ghp', '_', 'a'.repeat(36)].join('')
+  const log = ['\x01abc1234', 'me@users.noreply.github.com', 'me@users.noreply.github.com', 'msg', '\ndiff --git a/n.txt b/n.txt\n--- a/n.txt\n+++ b/n.txt\n@@ -1,0 +1,2 @@\n+++ ' + key + '\n+ok\n'].join('\x02')
+  expect(pushFindings(log, { config: NO_CONFIG, isGuarded: false })).toEqual(['n.txt:1 (commit abc1234): a GitHub token (ghp_…).'])
 })

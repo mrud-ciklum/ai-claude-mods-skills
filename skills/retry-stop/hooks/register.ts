@@ -15,8 +15,12 @@ const EDITS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit'])
 // The command as compared: the same words with any spacing.
 export const sameCommand = (command: string) => command.trim().replace(/\s+/g, ' ')
 
-// The last shell command of each agent (the main loop is "main"), and how many times in a row it failed.
-const streaks = new Map<string, { command: string; failures: number }>()
+// The last shell command of each agent (the main loop is "main"), and how many times in a row it
+// failed. An atom, like all state in the family: it is this session's, never another's.
+const streaks = atom({ plugin: 'retry-stop', key: 'streaks' } as const, {})
+
+const without = (all: Readonly<Record<string, { command: string; failures: number }>>, loop: string) =>
+  Object.fromEntries(Object.entries(all).filter(([key]) => key !== loop))
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -28,21 +32,23 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     const loop = e.agentId ?? 'main'
     if (String(e.tool) !== 'Bash') {
-      if (EDITS.has(String(e.tool))) streaks.delete(loop)
+      if (EDITS.has(String(e.tool))) await update($, streaks, all => without(all, loop))
 
       return next(e)
     }
     if (!(await read($, isOn))) return next(e)
     const command = sameCommand(String((e as { command?: unknown }).command ?? ''))
-    const streak = streaks.get(loop)
+    const streak = (await read($, streaks))[loop]
     if (streak?.command === command && streak.failures >= FAILURES_ALLOWED)
       return {
         deny: `retry-stop: this command failed ${streak.failures} times in a row, and nothing was edited since. Read its error and change something first: the command, a file, or the approach. If running it again as it is would help, tell the user why.`,
       }
     const ran = await next(e)
     // A run another guard refused did not fail on its own.
-    if (ran.deny === undefined && ran.isError === true) streaks.set(loop, { command, failures: streak?.command === command ? streak.failures + 1 : 1 })
-    else if (ran.deny === undefined) streaks.delete(loop)
+    if (ran.deny === undefined && ran.isError === true) {
+      const failures = streak?.command === command ? streak.failures + 1 : 1
+      await update($, streaks, all => ({ ...all, [loop]: { command, failures } }))
+    } else if (ran.deny === undefined) await update($, streaks, all => without(all, loop))
 
     return ran
   }).catch(($, e, next) => next(e)) // a guard of time: if it fails, the command goes on

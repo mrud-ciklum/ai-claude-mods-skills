@@ -115,6 +115,9 @@ test('the section lists every live session: this one first, then who waits longe
   world.write('/work/trial/.git/HEAD', 'ref: refs/heads/fix/123\n')
   world.write('/work/app/.git', 'gitdir: /repos/app.git/worktrees/app\n')
   world.write('/repos/app.git/worktrees/app/HEAD', 'ref: refs/heads/research/123\n')
+  // A submodule's .git points at its git folder relative to itself.
+  world.write('/work/new/.git', 'gitdir: ../.git/modules/new\n')
+  world.write('/work/.git/modules/new/HEAD', 'ref: refs/heads/feat/rel\n')
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-sessions', surface: 'desktop', ...BAND })
   expect(await drawnTexts(ui)).toEqual(['beneath'])
@@ -132,6 +135,7 @@ test('the section lists every live session: this one first, then who waits longe
       '◌ wait 15m',
       '71%',
       'trial · fix/123',
+      'new · feat/rel',
       'Rescore #123 · 80%',
       'answered: Rescore done: +0.004 score. Publish the delta?',
       '1 runner',

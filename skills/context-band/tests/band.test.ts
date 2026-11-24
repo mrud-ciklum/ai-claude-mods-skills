@@ -1261,6 +1261,9 @@ test('a mod card that asks for a toolbar button gets one, with the live sessions
   const clock = mock.clock(on, { now: 1_000_000 })
   const files = new Map<string, string>()
   const mtimes = new Map<string, number>()
+  // A card caught half-written loses only its own button.
+  files.set('/home/me/.claude/skills/mod-broken/mod.json', '{ "order": 3, "button": ')
+  files.set('/home/me/.claude/skills/mod-broken/.claude-plugin/plugin.json', JSON.stringify({ name: 'mod-broken' }))
   files.set('/home/me/.claude/skills/mod-sessions/mod.json', JSON.stringify({ order: 4, title: 'Sessions', button: { key: 'sessions', label: 'Sessions', count: 'sessions' } }))
   files.set('/home/me/.claude/skills/mod-sessions/.claude-plugin/plugin.json', JSON.stringify({ name: 'mod-sessions' }))
   files.set('/home/me/.claude/skills/mod-limits/mod.json', JSON.stringify({ order: 2, title: 'Limits' }))

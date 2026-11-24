@@ -131,7 +131,7 @@ async function logTiming($: EngineInterface, row: Record<string, unknown>, level
 // The memory folder is named after the folder the session started in, and
 // the working folder may have moved below it since (a `cd` in a command):
 // try the working folder, then each folder above it.
-// ponytail: a session that moved to an unrelated folder finds no memory.
+// Known limit: a session that moved to an unrelated folder finds no memory.
 async function memoryDir($: EngineInterface, config: string, cwd: string): Promise<string | undefined> {
   let at = cwd
   for (let i = 0; i < 12 && at !== ''; i++) {
@@ -187,7 +187,7 @@ async function loadMemory($: EngineInterface, answer: string, now: number): Prom
   add('memory index MEMORY.md', await text(`${dir}/MEMORY.md`))
 
   // A note is read again only when its size changed (the listing gives sizes for free).
-  // ponytail: an edit that keeps the byte count is missed until the next reload.
+  // Known limit: an edit that keeps the byte count is missed until the next reload.
   const toks = tokens(answer)
   const names = (await $.fs.list(dir).catch(() => []))
     .filter(f => f.kind === 'file' && f.name.endsWith('.md') && f.name !== 'MEMORY.md')
@@ -220,7 +220,7 @@ async function loadMemory($: EngineInterface, answer: string, now: number): Prom
 // Submits a Verify or Dig prompt and marks the turn it starts, whose answer is
 // then not checked again (turn.complete). The engine passes the submission
 // through every hook but this plugin's own, so the mark is set here, not there.
-// ponytail: a prompt the person queues before this one runs clears the mark first.
+// Known limit: a prompt the person queues before this one runs clears the mark first.
 async function submitOwn($: EngineInterface, text: string) {
   await update($, isOwnTurn, () => true)
   await $.prompt.submit({ text })
@@ -252,7 +252,6 @@ const hasDigSkill = async ($: EngineInterface) => {
   return (await Promise.all(spots.map(p => $.fs.exists(p).catch(() => false)))).some(Boolean)
 }
 
-// One claim, measured properly: the method of the dig skill, or the skill itself where the project has one.
 // This session's project folder, found as the check's own file is (sessionDir).
 async function projectDir($: EngineInterface): Promise<string | undefined> {
   const home = await $.env.get('HOME').catch(() => undefined)
@@ -315,6 +314,7 @@ async function loadTally($: EngineInterface) {
   await update($, wrongTally, () => tallyOf(text.split('\n').filter(Boolean)))
 }
 
+// One claim, measured properly: the method of the dig skill, or the skill itself where the project has one.
 async function dig($: EngineInterface, turnId: string, index: number) {
   const check = await read($, last)
   const claim = check?.turnId === turnId ? check.claims[index] : undefined
@@ -518,7 +518,7 @@ export const register: Register = (on, options) => {
           claims,
         }
         const path = `${folder}/${LAST_CHECK}`
-        // ponytail: read, then written whole; two sessions of one project finishing a check at once can lose one entry.
+        // Known limit: read, then written whole; two sessions of one project finishing a check at once can lose one entry.
         const old: unknown = await $.fs
           .read(path)
           .then(text => JSON.parse(text) as unknown)
