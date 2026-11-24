@@ -1,0 +1,9 @@
+{
+  "name": "bash-guard",
+  "version": "0.1.0",
+  "description": "Stops a shell command before it runs when it would read a huge file, the Claude Code binary or the whole home folder, or start a background test, benchmark or migration without set -euo pipefail and the git SHA.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

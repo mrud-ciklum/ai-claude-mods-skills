@@ -1,0 +1,6 @@
+{
+  "order": 21,
+  "group": "Guards",
+  "title": "Retry stop",
+  "summary": "Refuses the third run of a command that failed twice in a row with no edit between"
+}

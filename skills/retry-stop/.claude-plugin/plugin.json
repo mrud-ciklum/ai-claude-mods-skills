@@ -1,0 +1,9 @@
+{
+  "name": "retry-stop",
+  "version": "0.1.0",
+  "description": "Refuses a shell command that has just failed twice in a row with no file edited between, so the model changes something before running it again.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

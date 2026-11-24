@@ -36,6 +36,9 @@ a `SKILL.md`) as a skill. Installing means linking these folders there.
 | 16 | `mod-mission` | Readings | Overview (Mission Control) | Everything in one place: context over time, limits, every session's runners on a timeline, sessions, Mac and PR - with charts |
 | 17 | `claim-check` | Checks | Claim check | After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt |
 | 18 | `outbound-guard` | Guards | Outbound guard | Stops a post or a push whose text breaks a rule: an inline body, an em dash, an unapproved @-mention, a key, a client's name in a public repository |
+| 19 | `bash-guard` | Guards | Bash guard | Stops a command that would hang on a huge file, a binary or the whole disk, and a background test run without set -euo pipefail and a git SHA |
+| 20 | `agent-preview` | Guards | Agent preview | Shows a background agent's or a workflow's prompt and launches it only when you press Launch |
+| 21 | `retry-stop` | Guards | Retry stop | Refuses the third run of a command that failed twice in a row with no edit between |
 
 The Mods panel lists them by group: Readings (above the prompt), Conversation (how the
 conversation looks), Checks (of the answers) and Guards (of what leaves the machine).

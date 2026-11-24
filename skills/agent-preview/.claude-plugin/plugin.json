@@ -1,0 +1,9 @@
+{
+  "name": "agent-preview",
+  "version": "0.1.0",
+  "description": "Before a background agent or a workflow starts, shows its prompt in a question and launches it only when the person answers Launch.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

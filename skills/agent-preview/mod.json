@@ -1,0 +1,9 @@
+{
+  "order": 20,
+  "group": "Guards",
+  "title": "Agent preview",
+  "summary": "Shows a background agent's or a workflow's prompt and launches it only when you press Launch",
+  "settings": [
+    { "key": "scope", "label": "Ask for", "options": ["background", "all"], "default": "background" }
+  ]
+}

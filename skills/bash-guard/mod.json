@@ -1,0 +1,9 @@
+{
+  "order": 19,
+  "group": "Guards",
+  "title": "Bash guard",
+  "summary": "Stops a command that would hang on a huge file, a binary or the whole disk, and a background test run without set -euo pipefail and a git SHA",
+  "settings": [
+    { "key": "preflight", "label": "Background preflight", "options": ["on", "off"], "default": "on" }
+  ]
+}

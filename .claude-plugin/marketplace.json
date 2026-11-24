@@ -8,6 +8,16 @@
   },
   "plugins": [
     {
+      "name": "agent-preview",
+      "source": "./skills/agent-preview",
+      "description": "Before a background agent or a workflow starts, shows its prompt in a question and launches it only when the person answers Launch."
+    },
+    {
+      "name": "bash-guard",
+      "source": "./skills/bash-guard",
+      "description": "Stops a shell command before it runs when it would read a huge file, the Claude Code binary or the whole home folder, or start a background test, benchmark or migration without set -euo pipefail and the git SHA."
+    },
+    {
       "name": "claim-check",
       "source": "./skills/claim-check",
       "description": "After each answer, a second model sorts its claims by what backs them (this turn's tool output, an earlier turn, memory, reasoning, nothing), with every cited quote checked in code"
@@ -101,6 +111,11 @@
       "name": "outbound-guard",
       "source": "./skills/outbound-guard",
       "description": "Stops a command that sends text out of this machine (a gh or glab post, a git push) when that text breaks a rule: an inline body, an em dash, an @-mention nobody approved, a key, or a client's name bound for a public repository."
+    },
+    {
+      "name": "retry-stop",
+      "source": "./skills/retry-stop",
+      "description": "Refuses a shell command that has just failed twice in a row with no file edited between, so the model changes something before running it again."
     }
   ]
 }
