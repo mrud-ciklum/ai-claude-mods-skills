@@ -591,7 +591,7 @@ export type Rules = { config: Config; isGuarded: boolean }
 // The findings the guarded list causes, by how they start: a refusal names the list only for these.
 export const NAME_FINDING = 'the name'
 export const EMAIL_FINDING = 'the e-mail address'
-export const isListFinding = (finding: string) => finding.includes(`${NAME_FINDING} "`) || finding.includes(`${EMAIL_FINDING} `)
+export const isListFinding = (finding: string) => finding.includes(`${NAME_FINDING} "`) || finding.includes(`${EMAIL_FINDING} `) || finding.includes('whose name holds "')
 
 // What one line holds that must not go: keys always; where the place is guarded, the names
 // on the list and e-mail addresses.
