@@ -1,0 +1,125 @@
+{
+  "name": "ai-claude-mods-skills",
+  "owner": {
+    "name": "mrud-ciklum"
+  },
+  "metadata": {
+    "description": "Claude Code mods: a band of readings above the prompt, a Mods panel, checks of answers and guards for what leaves the machine."
+  },
+  "plugins": [
+    {
+      "name": "claim-check",
+      "source": "./skills/claim-check",
+      "description": "After each answer, a second model sorts its claims by what backs them (this turn's tool output, an earlier turn, memory, reasoning, nothing), with every cited quote checked in code",
+      "version": "0.10.0"
+    },
+    {
+      "name": "context-band",
+      "source": "./skills/context-band",
+      "description": "A one-line band above the prompt that always shows how full the context window is.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-compact-marks",
+      "source": "./skills/mod-compact-marks",
+      "description": "Says how full the context was before and after each compaction: under /compact's output, and in a toast for an automatic one.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-fold-output",
+      "source": "./skills/mod-fold-output",
+      "description": "Folds a long command output to its first lines, with its length in lines and tokens and a button that shows it whole.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-forecast",
+      "source": "./skills/mod-forecast",
+      "description": "Forecasts the context window above the prompt: steps left to auto-compaction, a sparkline of the fill, and what the last step added.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-git",
+      "source": "./skills/mod-git",
+      "description": "Shows the session folder's git state in the band: branch, changed files, ahead and behind, and the branch's pull request with its checks, review and comments.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-limits",
+      "source": "./skills/mod-limits",
+      "description": "Shows the subscription rate-limit windows above the prompt: how much of the five-hour and weekly limits is used and when each resets.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-machine",
+      "source": "./skills/mod-machine",
+      "description": "Shows this Mac in the band: free memory with the agent gate's live slots and budget, and the disk's free space.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-mission",
+      "source": "./skills/mod-mission",
+      "description": "Mission Control: one view of everything the mods know - context over time, limits, every session's runners on a timeline, sessions, the Mac and the pull request - with real charts where the surface draws them.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-mode-badge",
+      "source": "./skills/mod-mode-badge",
+      "description": "Shows the model, the reasoning effort and the session's modes as one coloured badge in the prompt footer.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-prompt-hints",
+      "source": "./skills/mod-prompt-hints",
+      "description": "Turns the hint line under the prompt into what needs a look: a nearly full context, sessions waiting for you, a runner that died.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-quiet-tools",
+      "source": "./skills/mod-quiet-tools",
+      "description": "Hides the band's own tool calls (task_progress, runner_info) from the conversation: the band already shows what they say.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-runner-cards",
+      "source": "./skills/mod-runner-cards",
+      "description": "Draws a background launch in the conversation as a card with the runner's live state and progress, read from the band's registry.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-sessions",
+      "source": "./skills/mod-sessions",
+      "description": "Lists every live session in the band: its task, context and whether it waits for you; asks one for a report, sums this one up, and says what happened while you were away.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-task-spinner",
+      "source": "./skills/mod-task-spinner",
+      "description": "While a turn runs, the spinner says the task's current step and percent instead of its word.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-tool-groups",
+      "source": "./skills/mod-tool-groups",
+      "description": "Folds a finished group of tool calls into one line that says what was done, and opens it on a press.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mod-turn-stats",
+      "source": "./skills/mod-turn-stats",
+      "description": "Adds a line beneath each long answer: how long the turn took, how much context it added and how many tools it called.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "mods",
+      "source": "./skills/mods",
+      "description": "Mod 0: a side panel that lists your mods and turns each of them, or all of them, on and off in every session.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "outbound-guard",
+      "source": "./skills/outbound-guard",
+      "description": "Stops a command that sends text out of this machine (a gh or glab post, a git push) when that text breaks a rule: an inline body, an em dash, an @-mention nobody approved, a key, or a client's name bound for a public repository.",
+      "version": "0.2.0"
+    }
+  ]
+}

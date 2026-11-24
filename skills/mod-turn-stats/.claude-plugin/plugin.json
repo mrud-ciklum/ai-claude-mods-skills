@@ -2,5 +2,8 @@
   "name": "mod-turn-stats",
   "version": "0.1.0",
   "description": "Adds a line beneath each long answer: how long the turn took, how much context it added and how many tools it called.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

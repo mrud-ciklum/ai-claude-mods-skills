@@ -1,5 +1,6 @@
 {
   "order": 5,
+  "group": "Readings",
   "title": "Mac",
   "summary": "Free memory and agent slots from the launch gate, free disk space"
 }

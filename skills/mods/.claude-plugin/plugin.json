@@ -2,5 +2,8 @@
   "name": "mods",
   "version": "0.1.0",
   "description": "Mod 0: a side panel that lists your mods and turns each of them, or all of them, on and off in every session.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

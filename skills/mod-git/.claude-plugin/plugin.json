@@ -2,5 +2,8 @@
   "name": "mod-git",
   "version": "0.1.0",
   "description": "Shows the session folder's git state in the band: branch, changed files, ahead and behind, and the branch's pull request with its checks, review and comments.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

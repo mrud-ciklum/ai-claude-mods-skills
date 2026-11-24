@@ -2,6 +2,9 @@
   "name": "claim-check",
   "version": "0.10.0",
   "description": "After each answer, a second model sorts its claims by what backs them (this turn's tool output, an earlier turn, memory, reasoning, nothing), with every cited quote checked in code",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts",
   "userConfig": {
     "autoCorrect": {

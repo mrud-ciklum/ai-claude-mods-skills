@@ -2,5 +2,8 @@
   "name": "mod-mission",
   "version": "0.1.0",
   "description": "Mission Control: one view of everything the mods know - context over time, limits, every session's runners on a timeline, sessions, the Mac and the pull request - with real charts where the surface draws them.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

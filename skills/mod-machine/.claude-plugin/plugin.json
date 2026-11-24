@@ -2,5 +2,8 @@
   "name": "mod-machine",
   "version": "0.1.0",
   "description": "Shows this Mac in the band: free memory with the agent gate's live slots and budget, and the disk's free space.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

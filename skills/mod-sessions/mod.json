@@ -1,5 +1,6 @@
 {
   "order": 4,
+  "group": "Readings",
   "title": "Sessions",
   "summary": "Every live session: task, context, who waits for you; a report, a summary and what happened while you were away",
   "button": { "key": "sessions", "label": "Sessions", "count": "sessions" }

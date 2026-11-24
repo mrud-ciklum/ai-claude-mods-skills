@@ -433,3 +433,30 @@ test('where the /config menu lists no models, a models choice offers the aliases
     'claude-fable-5-2',
   ])
 })
+
+test('cards that name a group are listed in sections: Readings, Conversation, Checks, Guards, then the rest', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000 })
+  const card = (order: number, title: string, group?: string) => JSON.stringify({ order, title, summary: `${title} does a thing`, ...(group ? { group } : {}) })
+  const manifest = (name: string) => JSON.stringify({ name, version: '0.1.0' })
+  const files = new Map([
+    [`${SKILLS}/mods/mod.json`, card(0, 'Mods')],
+    [`${SKILLS}/mods/.claude-plugin/plugin.json`, manifest('mods')],
+    [`${SKILLS}/guard/mod.json`, card(3, 'A guard', 'Guards')],
+    [`${SKILLS}/guard/.claude-plugin/plugin.json`, manifest('guard')],
+    [`${SKILLS}/reading/mod.json`, card(5, 'A reading', 'Readings')],
+    [`${SKILLS}/reading/.claude-plugin/plugin.json`, manifest('reading')],
+    [`${SKILLS}/check/mod.json`, card(1, 'A check', 'Checks')],
+    [`${SKILLS}/check/.claude-plugin/plugin.json`, manifest('check')],
+    [`${SKILLS}/loose/mod.json`, card(2, 'A loose one')],
+    [`${SKILLS}/loose/.claude-plugin/plugin.json`, manifest('loose')],
+  ])
+  answerWorld(on, clock, files)
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+
+  const pane = await $.ui.mount({ plugin: 'mods', surface: 'desktop', ...PANE })
+  const texts = (await pane.findAll({ type: 'Text' })).map(found => found.text)
+  const order = texts.filter(text => /^(Mods|Readings|Checks|Guards|Other|A reading|A check|A guard|A loose one)$/.test(text))
+  expect(order).toEqual(['Mods', 'Mods', 'Readings', 'A reading', 'Checks', 'A check', 'Guards', 'A guard', 'Other', 'A loose one'])
+  expect(texts).toContain('1 of 1 on')
+  await pane.unmount()
+})

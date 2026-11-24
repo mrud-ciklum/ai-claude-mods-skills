@@ -1,0 +1,38 @@
+name: mods
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate and test every mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          claude --version
+          git rev-parse HEAD
+          failed=""
+          for dir in skills/*/; do
+            [ -f "$dir.claude-plugin/plugin.json" ] || continue
+            echo "::group::$dir"
+            claude plugin validate "$dir" || failed="$failed $dir(validate)"
+            claude plugin test "$dir" || failed="$failed $dir(test)"
+            echo "::endgroup::"
+          done
+          claude plugin validate .
+          # Every mod is listed in the marketplace, and nothing else is.
+          diff <(for f in skills/*/.claude-plugin/plugin.json; do jq -r .name "$f"; done | sort) <(jq -r '.plugins[].name' .claude-plugin/marketplace.json | sort) || failed="$failed marketplace.json"
+          if [ -n "$failed" ]; then
+            echo "Failed:$failed"
+            exit 1
+          fi

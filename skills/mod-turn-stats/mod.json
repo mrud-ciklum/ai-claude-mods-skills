@@ -1,5 +1,6 @@
 {
   "order": 10,
+  "group": "Readings",
   "title": "Turn summary",
   "summary": "Under each answer: how long the turn took, the context it added and the tools it ran"
 }

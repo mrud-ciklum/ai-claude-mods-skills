@@ -1,5 +1,6 @@
 {
   "order": 7,
+  "group": "Conversation",
   "title": "Quiet service calls",
   "summary": "Hides task_progress and runner_info calls from the conversation: the band shows them anyway"
 }

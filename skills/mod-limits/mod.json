@@ -1,5 +1,6 @@
 {
   "order": 2,
+  "group": "Readings",
   "title": "Subscription limits",
   "summary": "The 5-hour and weekly limits: how much is used and when they reset"
 }

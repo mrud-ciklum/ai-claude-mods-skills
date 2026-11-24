@@ -2,5 +2,8 @@
   "name": "context-band",
   "version": "0.1.0",
   "description": "A one-line band above the prompt that always shows how full the context window is.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

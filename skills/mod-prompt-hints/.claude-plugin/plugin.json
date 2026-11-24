@@ -2,5 +2,8 @@
   "name": "mod-prompt-hints",
   "version": "0.1.0",
   "description": "Turns the hint line under the prompt into what needs a look: a nearly full context, sessions waiting for you, a runner that died.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

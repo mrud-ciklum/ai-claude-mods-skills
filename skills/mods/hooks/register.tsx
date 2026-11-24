@@ -207,7 +207,10 @@ export const register: Register = on => {
             </Box>
           </Box>
         )}
-        {list.map(modRow)}
+        {sections(list).flatMap(part => [
+          ...(part.group === null ? [] : [<Text bold dimColor>{part.group}</Text>]),
+          ...part.mods.map(modRow),
+        ])}
       </Box>
     )
 
@@ -342,9 +345,19 @@ export const register: Register = on => {
           />
         </Box>
         {settingsRow(e.surface)}
-        <Box flexDirection="column" gap={1}>
-          {list.map(modRow)}
-        </Box>
+        {sections(list).map(section => (
+          <Box flexDirection="column">
+            {section.group === null ? null : (
+              <Box gap={1}>
+                <Text bold dimColor>
+                  {section.group}
+                </Text>
+                <Text dimColor>{`${section.mods.filter(mod => isOn(current, mod.name)).length} of ${section.mods.length} on`}</Text>
+              </Box>
+            )}
+            {section.mods.map(modRow)}
+          </Box>
+        ))}
         {switchable.length === 0 && <Text dimColor>No other mods yet.</Text>}
       </Box>
     )
@@ -644,6 +657,24 @@ async function rescanWhileOpen($: EngineInterface): Promise<void> {
   }
 }
 
+// The panel's sections, in this order: the group a mod's card names. This panel itself comes
+// first with no heading; a mod whose card names no group, or one not listed here, comes last.
+// With no card naming a group, the list is one section with no headings.
+const GROUPS = ['Readings', 'Conversation', 'Checks', 'Guards']
+const OTHER_GROUP = 'Other'
+
+function sections(list: readonly ModEntry[]): { group: string | null; mods: ModEntry[] }[] {
+  const self = list.filter(mod => mod.name === SELF)
+  const rest = list.filter(mod => mod.name !== SELF)
+  if (!rest.some(mod => mod.group !== undefined)) {
+    return [{ group: null, mods: [...self, ...rest] }]
+  }
+  const groupOf = (mod: ModEntry) => (mod.group !== undefined && GROUPS.includes(mod.group) ? mod.group : OTHER_GROUP)
+  const named = [...GROUPS, OTHER_GROUP].map(group => ({ group, mods: rest.filter(mod => groupOf(mod) === group) })).filter(section => section.mods.length > 0)
+
+  return [...(self.length > 0 ? [{ group: null, mods: self }] : []), ...named]
+}
+
 // Every folder under ~/.claude/skills that carries a mod.json card, in the cards' order.
 async function rescan($: EngineInterface): Promise<void> {
   try {
@@ -671,6 +702,7 @@ async function rescan($: EngineInterface): Promise<void> {
         order: typeof card.order === 'number' && Number.isFinite(card.order) ? card.order : UNORDERED,
         title: textOf(card.title) ?? name,
         summary: textOf(card.summary) ?? '',
+        ...(typeof card.group === 'string' && card.group.trim() !== '' ? { group: card.group.trim() } : {}),
         settings: settingsOf(card.settings),
       })
     }

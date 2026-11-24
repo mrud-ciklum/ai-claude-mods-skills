@@ -1,5 +1,6 @@
 {
   "order": 1,
+  "group": "Readings",
   "title": "Context band",
   "summary": "Context, Compact, the task and runners above the prompt"
 }

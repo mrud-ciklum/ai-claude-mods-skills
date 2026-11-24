@@ -1,5 +1,6 @@
 {
   "order": 14,
+  "group": "Readings",
   "title": "Prompt hints",
   "summary": "Under the prompt: \"context 82% - press Compact\", \"2 sessions waiting for you\", \"runner died\""
 }

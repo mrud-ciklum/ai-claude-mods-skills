@@ -2,5 +2,8 @@
   "name": "mod-quiet-tools",
   "version": "0.1.0",
   "description": "Hides the band's own tool calls (task_progress, runner_info) from the conversation: the band already shows what they say.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

@@ -1,5 +1,6 @@
 {
   "order": 12,
+  "group": "Conversation",
   "title": "Fold long output",
   "summary": "Long command output folds to a few lines and a \"show all\" button"
 }

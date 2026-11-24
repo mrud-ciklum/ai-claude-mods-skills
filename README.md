@@ -15,30 +15,30 @@ a `SKILL.md`) as a skill. Installing means linking these folders there.
 
 ## The mods
 
-| # | Folder | Title | What it does |
-| --- | --- | --- | --- |
-| 0 | `mods` | Mods | This panel: turns mods on and off in every session |
-| 1 | `context-band` | Context band | Context, Compact, the task and runners above the prompt |
-| 2 | `mod-limits` | Subscription limits | The 5-hour and weekly limits: how much is used and when they reset |
-| 3 | `mod-forecast` | Context forecast | Steps left to auto-compact, a sparkline of the fill and what the last step took |
-| 4 | `mod-sessions` | Sessions | Every live session: task, context, who waits for you; a report, a summary and what happened while you were away |
-| 5 | `mod-machine` | Mac | Free memory and agent slots from the launch gate, free disk space |
-| 6 | `mod-git` | Git and PR | The branch, its changes, how far ahead and behind; the branch's PR with checks, review and comments |
-| 7 | `mod-quiet-tools` | Quiet service calls | Hides task_progress and runner_info calls from the conversation: the band shows them anyway |
-| 8 | `mod-tool-groups` | Tool groups in one line | "read 6 files · 2 searches · 1 command" instead of a column of rows; a click opens it |
-| 9 | `mod-runner-cards` | Runner cards | A background launch shows as a card with its live state and a progress bar |
-| 10 | `mod-turn-stats` | Turn summary | Under each answer: how long the turn took, the context it added and the tools it ran |
-| 11 | `mod-task-spinner` | Spinner with the task step | While the model works, the spinner shows the task step and percent |
-| 12 | `mod-fold-output` | Fold long output | Long command output folds to a few lines and a "show all" button |
-| 13 | `mod-compact-marks` | Compact marks | After a compaction, the context before and after: "context 82% → 31%" |
-| 14 | `mod-prompt-hints` | Prompt hints | Under the prompt: "context 82% - press Compact", "2 sessions waiting for you", "runner died" |
-| 15 | `mod-mode-badge` | Mode badge | One colored badge by the prompt: model, effort and session modes |
-| 16 | `mod-mission` | Overview (Mission Control) | Everything in one place: context over time, limits, every session's runners on a timeline, sessions, Mac and PR - with charts |
-| 17 | `claim-check` | Claim check | After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt |
-| 18 | `outbound-guard` | Outbound guard | Stops a post or a push whose text breaks a rule: an inline body, an em dash, an unapproved @-mention, a key, a client's name in a public repository |
+| # | Folder | Group | Title | What it does |
+| --- | --- | --- | --- | --- |
+| 0 | `mods` | - | Mods | This panel: turns mods on and off in every session |
+| 1 | `context-band` | Readings | Context band | Context, Compact, the task and runners above the prompt |
+| 2 | `mod-limits` | Readings | Subscription limits | The 5-hour and weekly limits: how much is used and when they reset |
+| 3 | `mod-forecast` | Readings | Context forecast | Steps left to auto-compact, a sparkline of the fill and what the last step took |
+| 4 | `mod-sessions` | Readings | Sessions | Every live session: task, context, who waits for you; a report, a summary and what happened while you were away |
+| 5 | `mod-machine` | Readings | Mac | Free memory and agent slots from the launch gate, free disk space |
+| 6 | `mod-git` | Readings | Git and PR | The branch, its changes, how far ahead and behind; the branch's PR with checks, review and comments |
+| 7 | `mod-quiet-tools` | Conversation | Quiet service calls | Hides task_progress and runner_info calls from the conversation: the band shows them anyway |
+| 8 | `mod-tool-groups` | Conversation | Tool groups in one line | "read 6 files · 2 searches · 1 command" instead of a column of rows; a click opens it |
+| 9 | `mod-runner-cards` | Conversation | Runner cards | A background launch shows as a card with its live state and a progress bar |
+| 10 | `mod-turn-stats` | Readings | Turn summary | Under each answer: how long the turn took, the context it added and the tools it ran |
+| 11 | `mod-task-spinner` | Conversation | Spinner with the task step | While the model works, the spinner shows the task step and percent |
+| 12 | `mod-fold-output` | Conversation | Fold long output | Long command output folds to a few lines and a "show all" button |
+| 13 | `mod-compact-marks` | Readings | Compact marks | After a compaction, the context before and after: "context 82% → 31%" |
+| 14 | `mod-prompt-hints` | Readings | Prompt hints | Under the prompt: "context 82% - press Compact", "2 sessions waiting for you", "runner died" |
+| 15 | `mod-mode-badge` | Readings | Mode badge | One colored badge by the prompt: model, effort and session modes |
+| 16 | `mod-mission` | Readings | Overview (Mission Control) | Everything in one place: context over time, limits, every session's runners on a timeline, sessions, Mac and PR - with charts |
+| 17 | `claim-check` | Checks | Claim check | After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt |
+| 18 | `outbound-guard` | Guards | Outbound guard | Stops a post or a push whose text breaks a rule: an inline body, an em dash, an unapproved @-mention, a key, a client's name in a public repository |
 
-The band mods (2 to 6, 16) draw inside the `context-band` row, so keep `context-band`
-installed and on.
+The Mods panel lists them by group: Readings (above the prompt), Conversation (how the
+conversation looks), Checks (of the answers) and Guards (of what leaves the machine).
 
 ## The skills
 
@@ -50,14 +50,24 @@ Skills have no `mod.json`, so the Mods panel does not list them.
 
 ## Requirements
 
-- Claude Code with hooks-module mods. Tested on Claude Code 2.1.326.
+- Claude Code with hooks-module mods. Tested on Claude Code 2.1.330.
 - macOS for `mod-machine` (it runs `memory_pressure` and `df`).
 - `git` for `mod-git`; `gh`, signed in, for its pull request line.
 
 ## Install
 
+One mod from the marketplace this repository is:
+
+In Claude Code:
+
+```text
+/plugin install claim-check --marketplace mrud-ciklum/ai-claude-mods-skills
+```
+
+Or all of them, as links into a clone, so a `git pull` updates them:
+
 ```bash
-git clone https://github.com/mrud-ciklum/claude-mods-skills.git ~/code/claude-mods-skills
+git clone https://github.com/mrud-ciklum/ai-claude-mods-skills.git ~/code/claude-mods-skills
 ```
 
 ```bash
@@ -88,8 +98,8 @@ that changed its files.
 cd ~/code/claude-mods-skills/skills/claim-check && claude plugin validate . && claude plugin test .
 ```
 
-Every mod passes its tests except `context-band`, which has 2 failing tests from before
-these changes; their cause was not looked into.
+Every mod passes its tests. GitHub Actions (`.github/workflows/mods.yml`) validates and tests
+every mod on each pull request.
 
 ## claim-check
 
@@ -110,3 +120,7 @@ See `skills/claim-check/README.md` for the details.
 - Turn it off in the Mods panel.
 
 See `skills/outbound-guard/README.md` for the details.
+
+## License
+
+MIT, see `LICENSE`.

@@ -2,5 +2,8 @@
   "name": "mod-sessions",
   "version": "0.1.0",
   "description": "Lists every live session in the band: its task, context and whether it waits for you; asks one for a report, sums this one up, and says what happened while you were away.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

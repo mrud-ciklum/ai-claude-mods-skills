@@ -2,5 +2,8 @@
   "name": "mod-fold-output",
   "version": "0.1.0",
   "description": "Folds a long command output to its first lines, with its length in lines and tokens and a button that shows it whole.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
   "types": "./types/index.d.ts"
 }

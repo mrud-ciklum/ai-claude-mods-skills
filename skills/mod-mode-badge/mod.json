@@ -1,5 +1,6 @@
 {
   "order": 15,
+  "group": "Readings",
   "title": "Mode badge",
   "summary": "One colored badge by the prompt: model, effort and session modes"
 }

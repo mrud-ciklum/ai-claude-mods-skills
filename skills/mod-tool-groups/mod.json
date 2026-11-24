@@ -1,5 +1,6 @@
 {
   "order": 8,
+  "group": "Conversation",
   "title": "Tool groups in one line",
   "summary": "\"read 6 files · 2 searches · 1 command\" instead of a column of rows; a click opens it"
 }

@@ -1,5 +1,6 @@
 {
   "order": 13,
+  "group": "Readings",
   "title": "Compact marks",
   "summary": "After a compaction, the context before and after: \"context 82% → 31%\""
 }

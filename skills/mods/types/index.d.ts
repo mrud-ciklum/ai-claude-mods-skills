@@ -8,6 +8,8 @@ export type ModEntry = {
   title: string
   /** One line on what it shows or changes. */
   summary: string
+  /** The panel's section it is listed in, as its card names it: Readings, Conversation, Checks or Guards. */
+  group?: string
   /** The choices it offers under its row, as its card lists them (none when absent). */
   settings?: ModSetting[]
 }

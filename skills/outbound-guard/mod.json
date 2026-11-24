@@ -1,5 +1,6 @@
 {
   "order": 18,
+  "group": "Guards",
   "title": "Outbound guard",
   "summary": "Stops a post or a push whose text breaks a rule: an inline body, an em dash, an unapproved @-mention, a key, a client's name in a public repository"
 }

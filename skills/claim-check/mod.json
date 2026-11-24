@@ -1,5 +1,6 @@
 {
   "order": 17,
+  "group": "Checks",
   "title": "Claim check",
   "summary": "After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt",
   "settings": [
