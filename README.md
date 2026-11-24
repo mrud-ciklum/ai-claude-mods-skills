@@ -3,8 +3,9 @@
 Claude Code mods and skills.
 
 - **Mods:** a band of readings above the prompt (context, limits, forecast, the Mac, git), a
-  Mods panel that turns each one on and off, and `claim-check`, which has a second model check
-  every answer's claims against the session's evidence.
+  Mods panel that turns each one on and off, `claim-check`, which has a second model check
+  every answer's claims against the session's evidence, and `outbound-guard`, which stops a post
+  or a push whose text breaks a rule.
 - **Skills:** `arch-atlas`, which builds a verified, code-anchored map of a project's
   architecture.
 
@@ -34,6 +35,7 @@ a `SKILL.md`) as a skill. Installing means linking these folders there.
 | 15 | `mod-mode-badge` | Mode badge | One colored badge by the prompt: model, effort and session modes |
 | 16 | `mod-mission` | Overview (Mission Control) | Everything in one place: context over time, limits, every session's runners on a timeline, sessions, Mac and PR - with charts |
 | 17 | `claim-check` | Claim check | After each answer, a second model checks its claims against the session's evidence; doubtful ones show above the prompt |
+| 18 | `outbound-guard` | Outbound guard | Stops a post or a push whose text breaks a rule: an inline body, an em dash, an unapproved @-mention, a key, a client's name in a public repository |
 
 The band mods (2 to 6, 16) draw inside the `context-band` row, so keep `context-band`
 installed and on.
@@ -98,3 +100,13 @@ these changes; their cause was not looked into.
 - The model and effort are picked under its row in the Mods panel; turn it off there too.
 
 See `skills/claim-check/README.md` for the details.
+
+## outbound-guard
+
+- It reads every Bash call and stops a `gh` or `glab` post or a `git push` whose text breaks a
+  rule. The model gets the reasons and fixes the text, or asks you.
+- The names it keeps out of public repositories live in `~/.claude/outbound-guard.json`, which
+  is yours and never goes in a repository.
+- Turn it off in the Mods panel.
+
+See `skills/outbound-guard/README.md` for the details.
