@@ -29,6 +29,9 @@ Pushes: `git push`, and `gh repo create --push`, which pushes the whole history.
 - The guard reads the commits the remote does not have yet: their added lines, file names and
   messages.
 - A key stops a push to any place.
+- A push in the same command as a step that makes commits (`git commit`, `merge`, `pull`,
+  `rebase`, `cherry-pick`, `revert`, `am`) is refused: the guard reads a push before the command
+  runs, when those commits do not exist yet. Commit in one command, push in the next.
 - When the push goes to a guarded place, a name on your list, an e-mail address, or a commit signed
   with a real e-mail address stops it too.
 
@@ -80,7 +83,6 @@ fake key.
 - It does not check that you approved the post. That stays your word in the chat.
 - A push it cannot read (git fails, or the changes are over 4 MiB) is refused when it goes to a
   guarded place, and goes on with a notice anywhere else.
-- An added line that itself begins with `++` reads as a diff header and is skipped.
 - A command with no `cd` or `-C` of its own is read as running in the session's folder.
 - Switch it off under Outbound guard in the Mods panel.
 

@@ -1,6 +1,6 @@
 {
   "name": "outbound-guard",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Stops a command that sends text out of this machine (a gh or glab post, a git push) when that text breaks a rule: an inline body, an em dash, an @-mention nobody approved, a key, or a client's name bound for a public repository.",
   "author": {
     "name": "mrud-ciklum"

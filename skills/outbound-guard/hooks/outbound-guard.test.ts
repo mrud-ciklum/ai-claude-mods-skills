@@ -197,6 +197,20 @@ test('a push is checked by the commits the remote does not have yet', async ($, 
   expect(await w.bash($, 'git push')).toBeUndefined()
 })
 
+test('a push in the same command as a step that makes commits is refused: the guard cannot read those commits yet', async ($, on) => {
+  const remotes: Record<string, string> = { origin: 'https://github.com/me/app' }
+  const log = commit({ added: ['ok'] })
+  const w = world(on, { git: argv => repo(remotes, log)(argv) })
+  const said = 'make the commit in one command, then push in the next'
+  for (const command of ['cd /work/app && git commit -qm "Fix the band" && git push', 'git -C /work/app pull --rebase origin main; git push origin main', 'git merge feature && git push -u origin main'])
+    expect([command, await w.bash($, command)]).toEqual([command, expect.stringContaining(said)])
+  // A push first, a dry run, or a push alone: read as before (the commit after a push is checked by its own rule).
+  expect((await w.bash($, 'git push && git commit -qm next')) ?? '').not.toContain(said)
+  expect(await w.bash($, 'git commit --dry-run && git push')).toBeUndefined()
+  expect(await w.bash($, 'git push')).toBeUndefined()
+  expect(plan('git commit -qm x; git push', '/work/app', '/home/me').map(send => (send.kind === 'push' ? `push ${send.isAfterCommit === true}` : send.kind))).toEqual(['commit', 'push true'])
+})
+
 test('gh repo create --push sends the whole history, and the guard reads all of it', async ($, on) => {
   const w = world(on, { git: repo({}, commit({ added: ['Initech'] })) })
   expect(await w.bash($, 'gh repo create me/new --public --source . --push')).toContain('the name "Initech"')

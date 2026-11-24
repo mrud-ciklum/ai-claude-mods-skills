@@ -363,6 +363,9 @@ export type Push = {
   revs: string[]
   // A repository `gh repo create --push` makes: where it goes, and that no remote has its commits yet.
   isNew?: { target: string | undefined }
+  // An earlier step of the same command makes commits (`git commit`, `merge`, `pull`...): the guard
+  // reads what a push sends before the command runs, when those commits do not exist yet.
+  isAfterCommit?: boolean
 }
 export type Send = Post | Push | Account | Commit
 
@@ -580,14 +583,33 @@ function gitSend(argv: Word[], scope: Scope): Push | Commit | undefined {
   return { kind: 'push', what: 'git push', dir, remote, revs: revs.length > 0 ? revs : ['HEAD'] }
 }
 
-// Every send in a command, in order.
+// The git subcommands that make commits of their own.
+const MAKES_COMMITS = new Set(['commit', 'merge', 'pull', 'rebase', 'cherry-pick', 'revert', 'am'])
+
+// A git command's subcommand, past the options of git itself (`git -C dir -c k=v commit`).
+function gitSubcommand(argv: Word[]): string | undefined {
+  for (let at = 1; at < argv.length; at++) {
+    const w = argv[at]?.text ?? ''
+    if (w === '-C' || w === '-c' || w === '--git-dir' || w === '--work-tree' || w === '--namespace') at++
+    else if (!w.startsWith('-')) return w
+  }
+
+  return undefined
+}
+
+// Every send in a command, in order. A push after a step that makes commits is marked: what
+// it would send cannot be read before the command runs.
 export function plan(command: string, cwd: string | undefined, home: string | undefined): Send[] {
   if (!mayBeOutbound(command)) return []
   const out: Send[] = []
+  let madeCommits = false
   for (const { argv, heredocs, scope } of steps(command, cwd, home)) {
     const name = argv[0]?.text.replace(/^.*\//, '') ?? ''
     const send = name === 'gh' || name === 'glab' ? cliSend(argv, heredocs, scope) : name === 'git' ? gitSend(argv, scope) : undefined
+    if (send?.kind === 'push' && madeCommits) send.isAfterCommit = true
     if (send) out.push(send)
+    const sub = name === 'git' ? gitSubcommand(argv) : undefined
+    if (sub !== undefined && MAKES_COMMITS.has(sub) && !argv.some(w => w.text === '--dry-run')) madeCommits = true
   }
 
   return out

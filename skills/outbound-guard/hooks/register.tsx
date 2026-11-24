@@ -83,6 +83,8 @@ async function reviewCommit($: EngineInterface, commit: Commit, config: Config):
 }
 
 async function reviewPush($: EngineInterface, push: Push, config: Config): Promise<string[]> {
+  if (push.isAfterCommit)
+    return ['it pushes commits that this same command makes first, and the guard reads what a push sends before the command runs, when those commits do not exist yet: make the commit in one command, then push in the next.']
   if (push.dir === undefined) return ['the guard cannot tell which repository this push is from (a cd or -C to a path it cannot resolve): run it with a literal path.']
   const remoteName = push.isNew || (push.remote !== undefined && /[:/]/.test(push.remote)) ? undefined : (push.remote ?? (await pushRemote($, push.dir)))
   const url = push.isNew ? push.isNew.target : remoteName === undefined ? push.remote : await remoteUrl($, push.dir, remoteName)
