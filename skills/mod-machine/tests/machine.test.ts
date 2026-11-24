@@ -53,28 +53,20 @@ function answerWorld(on: On, clock: MockClock, files: Map<string, string>, free 
   return world
 }
 
-test('calm memory is a chip, a nearly full disk a red row; the reading is shared with the other sessions', { plugins: [BAND_ROW] }, async ($, on) => {
+test('memory and disk are chips on the band\'s one line, a nearly full disk in red; the reading is shared with the other sessions', { plugins: [BAND_ROW] }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const files = new Map<string, string>([[`${HOME}/.claude/hooks/.agent_launches.json`, JSON.stringify([{ t: NOW / 1000 - 60, tool: 'Agent' }, { t: NOW / 1000 - 3_600, tool: 'Agent' }])]])
   const world = answerWorld(on, clock, files)
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ plugin: 'mod-machine', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual([
-    'Disk',
-    '96%',
-    `${'█'.repeat(19)}${'░'}`,
-    '20.7 GB free',
-    'RAM',
-    '24%',
-    'beneath',
-  ])
-  expect((await ui.find({ type: 'Text', text: '96%' }))?.props.color).toBe('error')
+  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['RAM', '24%', 'Disk', '96% · 20.7 GB free', 'beneath'])
+  expect((await ui.find({ type: 'Text', text: '96% · 20.7 GB free' }))?.props.color).toBe('error')
   expect(JSON.parse(files.get(`${HOME}/.claude/mods/machine.json`) ?? 'null')).toMatchObject({ freePct: 76, slots: { live: 1, budget: 4 } })
   expect(world.ran).toEqual(['memory_pressure', 'df'])
 })
 
-test('a fresh reading from another session is reused; amber memory is a row with its free share and the gate slots', { plugins: [BAND_ROW] }, async ($, on) => {
+test('a fresh reading from another session is reused; amber memory is an amber chip', { plugins: [BAND_ROW] }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const files = new Map<string, string>([
     [`${HOME}/.claude/mods/machine.json`, JSON.stringify({ at: NOW - 5_000, freePct: 40, disk: { usedPct: 50, freeKb: 230 * 1024 * 1024, totalKb: 460 * 1024 * 1024 }, slots: { live: 1, budget: 2 }, isGateOff: false })],
@@ -83,15 +75,7 @@ test('a fresh reading from another session is reused; amber memory is a row with
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-machine', surface: 'desktop', ...BAND })
   expect(world.ran).toEqual([])
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual([
-    'Memory',
-    '60%',
-    `${'█'.repeat(12)}${'░'.repeat(8)}`,
-    '40% free · slots 1/2',
-    'Disk',
-    '50% · 230 GB free',
-    'beneath',
-  ])
+  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['RAM', '60%', 'Disk', '50% · 230 GB free', 'beneath'])
   expect((await ui.find({ type: 'Text', text: '60%' }))?.props.color).toBe('warning')
 })
 
@@ -103,5 +87,5 @@ test('in quiet mode only what needs a look shows: a full disk, not calm memory',
   const ui = await $.ui.mount({ plugin: 'mod-machine', surface: 'desktop', ...BAND })
   const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
   expect(texts).toContain('Disk')
-  expect(texts).not.toContain('Memory')
+  expect(texts).not.toContain('RAM')
 })

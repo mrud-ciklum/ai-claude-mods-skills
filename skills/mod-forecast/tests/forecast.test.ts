@@ -128,7 +128,7 @@ async function runStep($: Engine, index: number, agentId?: string): Promise<void
   await stream.result
 }
 
-test('far from auto-compaction the steps left are a chip; eight or fewer away, a row with the sparkline and the growth', { plugins: [BAND_ROW] }, async ($, on) => {
+test('the steps left to auto-compaction are a chip; eight or fewer away, the chip turns red', { plugins: [BAND_ROW] }, async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   const main = [40_000, 50_000, 62_000, 140_000]
   answerWorld(on, 167_000, e => (e.agentId === undefined ? (main[e.index] ?? 0) : 190_000))
@@ -150,12 +150,11 @@ test('far from auto-compaction the steps left are a chip; eight or fewer away, a
     await ui.unmount()
   }
 
-  // A jump to 140k: (167k - 140k) / 33k average growth, about 1 step: a red row.
+  // A jump to 140k: (167k - 140k) / 33k average growth, about 1 step: still a chip, now red.
   await runStep($, 3)
   const near = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
   const texts = (await near.findAll({ type: 'Text' })).map(found => found.text)
-  expect(texts.slice(0, 2)).toEqual(['Steps left', '≈1'])
-  expect(texts[3]).toMatch(/^\+\d+k\/step/)
+  expect(texts.slice(0, 2)).toEqual(['Steps', '≈1'])
   expect((await near.find({ type: 'Text', text: '≈1' }))?.props.color).toBe('error')
 })
 

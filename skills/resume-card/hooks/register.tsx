@@ -311,8 +311,8 @@ function placeInBand(ui: ElementTable, inner: RenderElement, slot: string, piece
   )
 }
 
-// A meter mod's readings in the band: each one at rest a chip on the line of
-// quiet figures, each one that needs a look a full row with its bar.
+// A meter mod's readings in the band: each one a chip on the band's one line of
+// figures, its tone saying when it needs a look. No reading grows into a row with a bar.
 type BandReading = { row: GridRow; chip: GridChip; needsLook: boolean }
 
 function placeReadings(
@@ -324,8 +324,8 @@ function placeReadings(
   columns: number,
 ): RenderElement {
   const { Box } = ui
-  const atRest = readings.filter(reading => !reading.needsLook)
-  const looks = readings.filter(reading => reading.needsLook)
+  const atRest = readings
+  const looks: readonly BandReading[] = []
   let placed = inner
   if (atRest.length > 0) {
     const chips = (

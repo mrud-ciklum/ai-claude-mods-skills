@@ -198,8 +198,8 @@ test('the band shows the measured fill, Details and Compact on the terminal and 
     await openMenu(ui)
     expect(await ui.find({ type: 'Text', text: 'Context' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '62%' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '████████████░░░░░░░░' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '124k of 200k' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '████████████░░░░░░░░' })).toBeUndefined() // no bar
+    expect(await ui.find({ type: 'Text', text: '124k of 200k' })).toBeUndefined() // a chip, not a row: the figure alone
     expect(await ui.find({ type: 'Button', key: 'runners', text: 'Runners' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'mods', text: 'Mods' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'details' })).toBeDefined()
@@ -222,7 +222,7 @@ test('main-loop steps move the band mid-turn and toast once per level; subagent 
 
   const ui = await $.ui.mount({ plugin: 'context-band', surface: 'desktop', ...BAND })
   expect(await ui.find({ type: 'Text', text: '86%' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '172k of 200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '172k of 200k' })).toBeUndefined() // a chip, not a row: the figure alone
   expect(toasts).toEqual(['Context 85% full'])
 })
 
@@ -1432,7 +1432,7 @@ test('the toolbar waits behind ⋯ at the right end of the readings; ⋯ opens a
     expect(await ui.find({ type: 'Button', key })).toBeUndefined()
   }
   expect(await ui.find({ type: 'Text', text: 'height auto' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: '124k of 200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '124k of 200k' })).toBeUndefined() // a chip, not a row: the figure alone
   expect((await menu())?.props.dimColor).toBe(true)
 
   // ⋯ opens the toolbar above the readings and keeps that for every session; pressed again it shuts.

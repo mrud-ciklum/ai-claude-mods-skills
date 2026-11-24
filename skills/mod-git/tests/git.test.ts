@@ -94,20 +94,12 @@ function answerWorld(on: On, clock: MockClock, pullExit = 0): World {
   return world
 }
 
-test('a branch behind its upstream and a pull request that needs a look show as one row each', { plugins: [BAND_ROW] }, async ($, on) => {
+test('the branch and its pull request are chips on the band\'s one line; one that needs a look turns red', { plugins: [BAND_ROW] }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = answerWorld(on, clock)
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-git', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual([
-    'Git',
-    '3',
-    'research/123-parser-bakeoff · ↑2 ↓1',
-    'PR',
-    '#345',
-    'checks 2/4, 1 failed, 1 running · changes requested · 2 open threads, 1 wait for the author',
-    'beneath',
-  ])
+  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['Git', '3', 'PR', '#345', 'beneath'])
   expect((await ui.find({ type: 'Text', text: '#345' }))?.props.color).toBe('error')
   // The threads are asked for with the pull request's own owner, name and number.
   expect(world.ran.find(argv => argv[1] === 'api')?.slice(-6)).toEqual(['-F', 'owner=o', '-F', 'name=r', '-F', 'number=345'])

@@ -82,7 +82,7 @@ test("each mod's model calls are counted per day: calls, tokens in (cache reads 
   await band.unmount()
 })
 
-test('at the daily cap a call is not made, the calling mod is told, and the row says so', { plugins: [BAND_ROW, JUDGE] }, async ($, on) => {
+test('at the daily cap a call is not made, the calling mod is told, and the band says so', { plugins: [BAND_ROW, JUDGE] }, async ($, on) => {
   const spent = JSON.stringify({ '2026-11-24': { 'judge-mod': { calls: 40, input: 480_000, output: 30_000, ms: 1 } } })
   const w = world(on, { ledger: spent, switches: JSON.stringify({ off: [], modSettings: { 'cost-meter': { cap: '500k' } } }) })
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
@@ -91,10 +91,8 @@ test('at the daily cap a call is not made, the calling mod is told, and the row 
   expect(w.logs).toContain('not answered: aborted')
   const band = await $.ui.mount(BAND)
   const texts = (await band.findAll({ type: 'Text' })).map(found => found.text)
-  // A meter row like the limits': name, percent, bar, then the day's tokens against the cap.
-  const at = texts.indexOf('Side models')
-  expect(texts[at + 1]).toBe('100%')
-  expect(texts[at + 3]).toBe('510k of 500k tokens today, stopped · most judge-mod')
+  // A chip on the band's one line, in the error tone: the day's share of the cap.
+  expect(texts.slice(texts.indexOf('Models'), texts.indexOf('Models') + 2)).toEqual(['Models', '100%'])
   await band.unmount()
 })
 

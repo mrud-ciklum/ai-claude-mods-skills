@@ -656,9 +656,9 @@ export const register: Register = on => {
       </Box>
     )
     const counted = await read($, breakdown)
-    // Below the amber step the context is the first chip of the line of quiet
-    // figures; from it, the full row under the toolbar. Either reveals its card.
-    const isContextAtRest = colorOf(last.percent) !== 'warning' && colorOf(last.percent) !== 'error'
+    // The context is always the first chip of the band's one line of figures, its tone
+    // saying how full it is; the chip reveals its card. It never grows into a row with a bar.
+    const isContextAtRest = true
     const contextHover =
       counted !== null && !expanded ? (
         <Box display="none" hover={{ scope: CONTEXT_SCOPE, display: 'flex' }}>
@@ -2762,8 +2762,8 @@ function placeInBand(ui: ElementTable, inner: RenderElement, slot: string, piece
   )
 }
 
-// A meter mod's readings in the band: each one at rest a chip on the line of
-// quiet figures, each one that needs a look a full row with its bar.
+// A meter mod's readings in the band: each one a chip on the band's one line of
+// figures, its tone saying when it needs a look. No reading grows into a row with a bar.
 type BandReading = { row: GridRow; chip: GridChip; needsLook: boolean }
 
 function placeReadings(
@@ -2775,8 +2775,8 @@ function placeReadings(
   columns: number,
 ): RenderElement {
   const { Box } = ui
-  const atRest = readings.filter(reading => !reading.needsLook)
-  const looks = readings.filter(reading => reading.needsLook)
+  const atRest = readings
+  const looks: readonly BandReading[] = []
   let placed = inner
   if (atRest.length > 0) {
     const chips = (

@@ -92,7 +92,7 @@ function answerWorld(on: On, clock: MockClock, files: Map<string, string>, usage
 }
 
 // It draws on both surfaces and steps the clock: 2 to 4 seconds, too near the default 5 on a busy CI runner.
-test('windows at rest are chips, the five-hour one first; from the amber step a window is a row with its bar and the time to its reset', { plugins: [BAND_ROW], timeoutMs: 15_000 }, async ($, on) => {
+test('the windows are chips on the band\'s one line, the five-hour one first; from the amber step a chip turns amber', { plugins: [BAND_ROW], timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   answerWorld(on, clock, new Map(), windows(34, 12))
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
@@ -105,15 +105,8 @@ test('windows at rest are chips, the five-hour one first; from the amber step a 
 
   await $.session.measure(measured(windows(64, 12)))
   const amber = await $.ui.mount({ plugin: 'mod-limits', surface: 'desktop', ...BAND })
-  expect((await amber.findAll({ type: 'Text' })).map(found => found.text)).toEqual([
-    '5h limit',
-    '64%',
-    `${'█'.repeat(13)}${'░'.repeat(7)}`,
-    'in 2h 10m',
-    'Week',
-    '12%',
-    'beneath',
-  ])
+  expect((await amber.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['5h', '64%', 'Week', '12%', 'beneath'])
+  expect((await amber.find({ type: 'Text', text: '64%' }))?.props.color).toBe('warning')
   await amber.unmount()
 
   // Past its reset the five-hour window holds no figure and leaves the band.
@@ -166,15 +159,14 @@ test('a session without a reading of its own shows the newer one another session
   const world = answerWorld(on, clock, new Map(), [])
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-limits', surface: 'desktop', ...BAND })
-  expect(await ui.find({ type: 'Text', text: '5h limit' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '5h' })).toBeUndefined()
 
   world.write(SHARED, JSON.stringify({ windows: windows(65, 20), at: NOW + 30_000 }))
   await clock.advance(MINUTE)
   expect(await ui.find({ type: 'Text', text: '65%' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'in 2h 9m' })).toBeDefined()
 })
 
-test('in quiet mode the rows wait until a window reaches 60%', { plugins: [BAND_ROW] }, async ($, on) => {
+test('in quiet mode the chips wait until a window reaches 60%', { plugins: [BAND_ROW] }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const world = answerWorld(on, clock, new Map(), windows(34, 12))
   world.write(SWITCHES, JSON.stringify({ off: [], quiet: true }))
@@ -183,6 +175,6 @@ test('in quiet mode the rows wait until a window reaches 60%', { plugins: [BAND_
   expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['beneath'])
 
   await $.session.measure(measured(windows(64, 12)))
-  expect(await ui.find({ type: 'Text', text: '5h limit' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '5h' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: '64%' }))?.props.color).toBe('warning')
 })
