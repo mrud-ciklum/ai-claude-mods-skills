@@ -1105,6 +1105,7 @@ test("what an answer says about its own limits is a caveat, not a flag, and gets
 
 test('Wrong marks a flag as false, writes it to the project file, and the pane counts it', async ($, on) => {
   const written = new Map<string, string>()
+  on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
   on('clock.now', () => ({ value: Date.parse('2026-11-24') }))
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
   on('session.cwd', () => ({ value: '/work/app' }))
@@ -1130,6 +1131,10 @@ test('Wrong marks a flag as false, writes it to the project file, and the pane c
   expect(JSON.parse(file.trim())).toMatchObject({ verdict: 'unverified', claim: 'the deploy is green', priority: 1 })
   expect((await pane.find({ type: 'Text', text: /Marked wrong in this project/ }))?.text).toContain('unverified 1')
   await pane.unmount()
+
+  // A flag marked wrong is not handed to the next prompt.
+  const next = await $.prompt.submit({ text: 'next', wait: false, origin: { kind: 'composer' } })
+  expect(next.context ?? []).toHaveLength(0)
 })
 
 test('picked in the Mods panel, the second look runs on Opus while the first pass keeps its model', async ($, on) => {

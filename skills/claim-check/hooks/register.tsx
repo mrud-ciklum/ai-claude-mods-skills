@@ -63,7 +63,8 @@ const byWeight = (a: Claim, b: Claim) =>
   a.priority - b.priority ||
   VERDICTS.indexOf(a.verdict) - VERDICTS.indexOf(b.verdict)
 const done = (check: Check | null) => (check?.status === 'done' ? check.claims : [])
-const pick = (check: Check | null, verdicts: Verdict[]) => done(check).filter(c => verdicts.includes(c.verdict)).sort(byWeight)
+// A flag the person marked wrong is neither handed to the model nor asked about again.
+const pick = (check: Check | null, verdicts: Verdict[]) => done(check).filter(c => verdicts.includes(c.verdict) && !c.isMarkedWrong).sort(byWeight)
 // Handed to the next prompt unasked: never a minor detail and an assumption only
 // when key (the rest stay in the pane), six at most.
 export const flagged = (check: Check | null) =>
