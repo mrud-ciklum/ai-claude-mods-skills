@@ -1,0 +1,9 @@
+{
+  "name": "away-ping",
+  "version": "0.1.0",
+  "description": "Sends a notification through your own channel when an answer ends with a question for you, or when a turn ran longer than the time picked in the Mods panel.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

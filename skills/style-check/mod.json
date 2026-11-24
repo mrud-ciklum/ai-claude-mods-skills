@@ -1,0 +1,9 @@
+{
+  "order": 26,
+  "group": "Checks",
+  "title": "Style check",
+  "summary": "Without a model: an answer with an em dash, or not in the language you picked, gets a line under it and a reminder with your next prompt",
+  "settings": [
+    { "key": "language", "label": "Answer language", "options": ["any", "uk", "en"], "default": "any" }
+  ]
+}

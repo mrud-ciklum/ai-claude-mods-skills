@@ -64,7 +64,10 @@ export const register: Register = on => {
       count === 0 ? '' : `${count} ${plural(count, 'tool', 'tools')}`,
     ].filter(Boolean)
 
-    return { ...done, text: parts.join(' · ') }
+    // Core's text is the answer itself; another mod's line under it is kept, and this one joins it.
+    const mine = parts.join(' · ')
+
+    return { ...done, text: done.text === e.answer || done.text === '' ? mine : `${done.text} · ${mine}` }
   }).catch(($, e, next) => next(e))
 }
 

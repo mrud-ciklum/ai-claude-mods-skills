@@ -1,0 +1,9 @@
+{
+  "name": "style-check",
+  "version": "0.1.0",
+  "description": "Checks each answer without a model: em dashes, and the language picked in the Mods panel. A finding shows under the answer and rides with the next prompt as a reminder.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

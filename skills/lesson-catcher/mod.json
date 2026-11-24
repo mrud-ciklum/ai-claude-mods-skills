@@ -1,0 +1,6 @@
+{
+  "order": 25,
+  "group": "Checks",
+  "title": "Lesson catcher",
+  "summary": "When you correct the model, offers to save the correction as a rule in its memory"
+}

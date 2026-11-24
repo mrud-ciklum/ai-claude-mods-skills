@@ -1,0 +1,9 @@
+{
+  "order": 27,
+  "group": "Conversation",
+  "title": "Away ping",
+  "summary": "A notification when an answer ends with a question for you, or after a long turn",
+  "settings": [
+    { "key": "after", "label": "Long turn", "options": ["1 min", "5 min", "15 min", "never"], "default": "5 min" }
+  ]
+}

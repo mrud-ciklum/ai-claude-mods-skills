@@ -13,6 +13,11 @@
       "description": "Before a background agent or a workflow starts, shows its prompt in a question and launches it only when the person answers Launch."
     },
     {
+      "name": "away-ping",
+      "source": "./skills/away-ping",
+      "description": "Sends a notification through your own channel when an answer ends with a question for you, or when a turn ran longer than the time picked in the Mods panel."
+    },
+    {
       "name": "bash-guard",
       "source": "./skills/bash-guard",
       "description": "Stops a shell command before it runs when it would read a huge file, the Claude Code binary or the whole home folder, or start a background test, benchmark or migration without set -euo pipefail and the git SHA."
@@ -31,6 +36,11 @@
       "name": "cost-meter",
       "source": "./skills/cost-meter",
       "description": "Counts the model calls mods make (a judge, a second look), per mod and per day, shows today's tokens above the prompt and in the Mods panel, and stops them at a daily cap."
+    },
+    {
+      "name": "lesson-catcher",
+      "source": "./skills/lesson-catcher",
+      "description": "When a prompt corrects the model (\"you again\", \"not like that\", \"ти знову\"), offers a button that has the model save the correction as a feedback memory: what to do differently, and why."
     },
     {
       "name": "mod-compact-marks",
@@ -126,6 +136,11 @@
       "name": "retry-stop",
       "source": "./skills/retry-stop",
       "description": "Refuses a shell command that has just failed twice in a row with no file edited between, so the model changes something before running it again."
+    },
+    {
+      "name": "style-check",
+      "source": "./skills/style-check",
+      "description": "Checks each answer without a model: em dashes, and the language picked in the Mods panel. A finding shows under the answer and rides with the next prompt as a reminder."
     },
     {
       "name": "test-watch",

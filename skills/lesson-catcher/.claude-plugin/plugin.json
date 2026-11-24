@@ -1,0 +1,9 @@
+{
+  "name": "lesson-catcher",
+  "version": "0.1.0",
+  "description": "When a prompt corrects the model (\"you again\", \"not like that\", \"\u0442\u0438 \u0437\u043d\u043e\u0432\u0443\"), offers a button that has the model save the correction as a feedback memory: what to do differently, and why.",
+  "author": {
+    "name": "mrud-ciklum"
+  },
+  "types": "./types/index.d.ts"
+}

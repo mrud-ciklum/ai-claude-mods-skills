@@ -42,6 +42,9 @@ a `SKILL.md`) as a skill. Installing means linking these folders there.
 | 22 | `resume-card` | Readings | Resume card | At the start of a session, the last session in this folder: what it did and what it left open |
 | 23 | `cost-meter` | Readings | Side-model cost | Today's model calls made by mods: tokens and time per mod, with a daily cap that stops them |
 | 24 | `test-watch` | Checks | Test watch | After a turn that edited a mod's files, runs that mod's tests and shows the result above the prompt |
+| 25 | `lesson-catcher` | Checks | Lesson catcher | When you correct the model, offers to save the correction as a rule in its memory |
+| 26 | `style-check` | Checks | Style check | Without a model: an answer with an em dash, or not in the language you picked, gets a line under it and a reminder with your next prompt |
+| 27 | `away-ping` | Conversation | Away ping | A notification when an answer ends with a question for you, or after a long turn |
 
 The Mods panel lists them by group: Readings (above the prompt), Conversation (how the
 conversation looks), Checks (of the answers) and Guards (of what leaves the machine).
