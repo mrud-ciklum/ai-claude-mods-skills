@@ -560,6 +560,21 @@ export const register: Register = on => {
     )
   })
 
+  // The band's rows in one order wherever the engine ran their hooks: this row first, then the
+  // family's pieces (chip, then meter, then section, each by its order number), then every
+  // other row as it came. The engine hands a row's hook only its own drawing, so each mod's
+  // piece is a row of its own; the order is what still makes them read as one band.
+  on('ui.render', { component: 'AbovePromptList' }, async ($, e, next) => {
+    const rows = e.props.rows
+    const own = rows.filter(row => row.plugin === MOD_NAME)
+    const ranked = rows.filter(row => row.plugin !== MOD_NAME).map(row => ({ row, rank: pieceRank(row.tree) }))
+    const keyed = ranked.filter(x => x.rank !== undefined).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+    const rest = ranked.filter(x => x.rank === undefined)
+    const ordered = [...own, ...keyed.map(x => x.row), ...rest.map(x => x.row)]
+
+    return ordered.every((row, i) => row === rows[i]) ? next(e) : next({ ...e, props: { ...e.props, rows: ordered } })
+  }).catch(($, e, next) => next(e))
+
   // The band, top down: the toolbar with the height at its right end while
   // the ⋯ menu is open, the context meter, the readings with ⋯ at their right
   // end, the other mods' rows, the open section (details or runners), and the
@@ -2657,6 +2672,23 @@ function trimZero(fixed: string): string {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+// Where a row's piece goes in the band: chips first, then meters, then sections, each by the
+// mod's order number in its key (`meter:03:mod-forecast`). A row with no such piece has none.
+const PIECE_RANK = { chip: 0, meter: 1, section: 2 } as const
+function pieceRank(node: unknown, depth = 0): number | undefined {
+  const key = keyOf(node)
+  const found = key === undefined ? null : /^(chip|meter|section):(\d+):/.exec(key)
+  if (found) return PIECE_RANK[found[1] as keyof typeof PIECE_RANK] * 1_000 + Number(found[2])
+  const children = (node as TreeNode | null)?.children
+  if (depth >= 3 || !Array.isArray(children)) return undefined
+  for (const child of children) {
+    const rank = pieceRank(child, depth + 1)
+    if (rank !== undefined) return rank
+  }
+
+  return undefined
 }
 
 // ---- band layout (shared block) ----

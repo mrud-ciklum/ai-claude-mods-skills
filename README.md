@@ -23,7 +23,7 @@ a `SKILL.md`) as a skill. Installing means linking these folders there.
 | 3 | `mod-forecast` | Readings | Context forecast | Steps left to auto-compact, a sparkline of the fill and what the last step took |
 | 4 | `mod-sessions` | Readings | Sessions | Every live session: task, context, who waits for you; a report, a summary and what happened while you were away |
 | 5 | `mod-machine` | Readings | Mac | Free memory and agent slots from the launch gate, free disk space |
-| 6 | `mod-git` | Readings | Git and PR | The branch, its changes, how far ahead and behind; the branch's PR with checks, review and comments |
+| 6 | `mod-git` | Readings | Git and PR | The branch, its changes, how far ahead and behind; the branch's PR with checks, review and open review threads |
 | 7 | `mod-quiet-tools` | Conversation | Quiet service calls | Hides task_progress and runner_info calls from the conversation: the band shows them anyway |
 | 8 | `mod-tool-groups` | Conversation | Tool groups in one line | "read 6 files · 2 searches · 1 command" instead of a column of rows; a click opens it |
 | 9 | `mod-runner-cards` | Conversation | Runner cards | A background launch shows as a card with its live state and a progress bar |

@@ -19,7 +19,10 @@ const pullAt = atom({ plugin: 'mod-git', key: 'pullAt' } as const, 0)
 const TREE_POLL_MS = 20_000
 const PULL_EVERY_MS = 3 * 60_000
 const PULL_CACHE = '.claude/mods/pulls.json'
-const PULL_FIELDS = 'number,title,state,isDraft,reviewDecision,statusCheckRollup,comments,url'
+const PULL_FIELDS = 'number,title,state,isDraft,reviewDecision,statusCheckRollup,comments,url,author'
+// A pull request's review threads, and who spoke last in each: what `gh pr view` does not give.
+const THREADS_QUERY =
+  'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login}}}}}}}}'
 const REVIEW_WORDS: Readonly<Record<string, string>> = {
   APPROVED: 'approved',
   CHANGES_REQUESTED: 'changes requested',
@@ -128,11 +131,46 @@ async function readPull($: EngineInterface, isForced = false): Promise<void> {
       return
     }
     const ran = await $.process.run(['gh', 'pr', 'view', '--json', PULL_FIELDS], { cwd, timeoutMs: 30_000 })
-    const found = ran.exitCode === 0 ? parsePull(ran.stdout) : null
+    const parsed = ran.exitCode === 0 ? parsePull(ran.stdout) : null
+    const found = parsed !== null && parsed.state === 'OPEN' ? { ...parsed, ...(await readThreads($, cwd, parsed.url, authorOf(ran.stdout))) } : parsed
     await update($, pull, () => found)
     await $.fs.write(cachePath, JSON.stringify({ ...cache, [cacheKey]: { at: now, pull: found } }))
   } catch (error) {
     $.ui.log(`mod-git: could not read the pull request: ${messageOf(error)}`, { to: 'debug' })
+  }
+}
+
+const authorOf = (text: string) => {
+  try {
+    const login = (JSON.parse(text) as { author?: { login?: unknown } }).author?.login
+
+    return typeof login === 'string' ? login : ''
+  } catch {
+    return ''
+  }
+}
+
+// The open review threads of the pull request at `url`, and how many wait for its author. Nothing when gh cannot tell.
+async function readThreads($: EngineInterface, cwd: string, url: string, author: string): Promise<{ threads?: { open: number; waiting: number } }> {
+  const at = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url)
+  if (at === null) return {}
+  const ran = await $.process
+    .run(['gh', 'api', 'graphql', '-f', `query=${THREADS_QUERY}`, '-F', `owner=${at[1]}`, '-F', `name=${at[2]}`, '-F', `number=${at[3]}`], { cwd, timeoutMs: 30_000 })
+    .catch(() => undefined)
+  if (ran === undefined || ran.exitCode !== 0) return {}
+  try {
+    type Thread = { isResolved?: unknown; comments?: { nodes?: { author?: { login?: unknown } }[] } }
+    const nodes = (JSON.parse(ran.stdout) as { data?: { repository?: { pullRequest?: { reviewThreads?: { nodes?: Thread[] } } } } }).data?.repository?.pullRequest?.reviewThreads?.nodes ?? []
+    const open = nodes.filter(node => node.isResolved !== true)
+    const waiting = open.filter(node => {
+      const last = node.comments?.nodes?.[0]?.author?.login
+
+      return typeof last === 'string' && last !== author
+    }).length
+
+    return { threads: { open: open.length, waiting } }
+  } catch {
+    return {}
   }
 }
 
@@ -240,11 +278,16 @@ function pullLine(request: PullState): string {
   const checks =
     total === 0 ? '' : `checks ${passed}/${total}${failed === 0 ? '' : `, ${failed} failed`}${pending === 0 ? '' : `, ${pending} running`}`
 
-  return [state, checks, REVIEW_WORDS[request.review] ?? ''].filter(Boolean).join(' · ')
+  const threads =
+    request.threads === undefined || request.threads.open === 0
+      ? ''
+      : `${request.threads.open} open ${request.threads.open === 1 ? 'thread' : 'threads'}${request.threads.waiting === 0 ? '' : `, ${request.threads.waiting} wait for the author`}`
+
+  return [state, checks, REVIEW_WORDS[request.review] ?? '', threads].filter(Boolean).join(' · ')
 }
 
 function pullNeedsLook(request: PullState): boolean {
-  return request.state === 'OPEN' && (request.checks.failed > 0 || request.review === 'CHANGES_REQUESTED')
+  return request.state === 'OPEN' && (request.checks.failed > 0 || request.review === 'CHANGES_REQUESTED' || (request.threads?.waiting ?? 0) > 0)
 }
 
 function pullTone(request: PullState): ThemeKey {
@@ -254,7 +297,7 @@ function pullTone(request: PullState): ThemeKey {
   if (request.checks.failed > 0 || request.review === 'CHANGES_REQUESTED') {
     return 'error'
   }
-  if (request.checks.pending > 0) {
+  if (request.checks.pending > 0 || (request.threads?.waiting ?? 0) > 0) {
     return 'warning'
   }
 

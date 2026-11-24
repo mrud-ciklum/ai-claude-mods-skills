@@ -15,7 +15,7 @@ const HOME = '/home/me'
 const NOW = 1_760_000_000_000
 const BAND = {
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 140, scroll: { offset: 0, bodyRows: 30 }, view: {} },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 30, bodyColumns: 140, scroll: { offset: 0, bodyRows: 30 }, view: {} },
 } as const
 const MEMORY = 'The system has 19327352832 (1179648 pages with a page size of 16384).\nSystem-wide memory free percentage: 76%\n'
 const DF = 'Filesystem 1024-blocks Used Available Capacity iused ifree %iused Mounted on\n/dev/disk3s5 482797652 435846444 21662368 96% 4661087 216623680 2% /System/Volumes/Data\n'

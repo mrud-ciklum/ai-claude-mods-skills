@@ -16,7 +16,7 @@ const NOW = 1_760_000_000_000
 const MINUTE = 60_000
 const BAND = {
   component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 60, bodyColumns: 140, scroll: { offset: 0, bodyRows: 60 }, view: {} },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 60, bodyColumns: 140, scroll: { offset: 0, bodyRows: 60 }, view: {} },
 } as const
 const PANE = {
   component: 'Pane',

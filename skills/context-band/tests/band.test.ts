@@ -13,6 +13,7 @@ const BAND = {
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,
+   isCollapsed: false,
     isWorking: false,
     maxRows: 30,
     bodyColumns: 100,
@@ -537,7 +538,7 @@ test('Runners lists background work with what it does: shells at once, the rest 
   }))
   on('classic.Stop', () => ({}))
   on('agent.list', () => ({
-    value: [{ id: 'a7', description: 'Review the retry change for missed cases', type: 'general-purpose', status: 'running' as const }],
+    value: [{ id: 'a7', description: 'Review the retry change for missed cases', type: 'general-purpose', status: 'running' as const, kind: 'local_agent' as const }] as never, // the fields the band reads
   }))
   await $.session.measure(MEASURED)
   const ui = await $.ui.mount({ plugin: 'context-band', surface: 'desktop', ...BAND })
@@ -924,6 +925,46 @@ test('switched off in the mods panel the band draws only what lies beneath and a
   expect(await ui.find({ type: 'Text', text: 'beneath' })).toBeDefined()
   const back = await $.prompt.compose({ ...request, tools: ['Bash', PROGRESS] })
   expect(back.sections.map(section => section.id)).toEqual(['intro', 'context-band:progress'])
+})
+
+// Two mods that draw a keyed piece each, as their own rows: the band orders the rows by the keys.
+const MACHINE_ROW = {
+  name: 'mod-machine',
+  register: (on: On) => {
+    on('ui.render', { component: 'AbovePrompt' }, async () => ({
+      type: 'Box' as const,
+      props: { key: 'chip:05:mod-machine', flexDirection: 'column' as const },
+      children: [{ type: 'Text' as const, children: ['RAM 24%'] }],
+    }))
+  },
+}
+const LIMITS_ROW = {
+  name: 'mod-limits',
+  register: (on: On) => {
+    on('ui.render', { component: 'AbovePrompt' }, async () => ({
+      type: 'Box' as const,
+      props: { key: 'chip:02:mod-limits', flexDirection: 'column' as const },
+      children: [{ type: 'Text' as const, children: ['5h 12%'] }],
+    }))
+  },
+}
+const PLAIN_ROW = {
+  name: 'some-mod',
+  register: (on: On) => {
+    on('ui.render', { component: 'AbovePrompt' }, async () => ({ type: 'Text' as const, children: ['a plain row'] }))
+  },
+}
+
+test('the band orders the rows of the other mods by their pieces: chips by order number, plain rows last', { plugins: [PLAIN_ROW, MACHINE_ROW, LIMITS_ROW] }, async ($, on) => {
+  answerMeasure(on)
+  await $.session.measure({ ...MEASURED, context: { tokens: 80_000, window: 200_000, percent: 40 } })
+  const ui = await $.ui.mount({ plugin: 'context-band', surface: 'desktop', ...BAND })
+  const texts = await drawnTexts(ui)
+  const at = (text: string) => texts.indexOf(text)
+  expect(at('Context')).toBeGreaterThanOrEqual(0)
+  expect(at('Context')).toBeLessThan(at('5h 12%'))
+  expect(at('5h 12%')).toBeLessThan(at('RAM 24%'))
+  expect(at('RAM 24%')).toBeLessThan(at('a plain row'))
 })
 
 // Two tests here checked that the band moved the pieces other mods stacked beneath it into its

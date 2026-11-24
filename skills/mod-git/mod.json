@@ -2,5 +2,5 @@
   "order": 6,
   "group": "Readings",
   "title": "Git and PR",
-  "summary": "The branch, its changes, how far ahead and behind; the branch's PR with checks, review and comments"
+  "summary": "The branch, its changes, how far ahead and behind; the branch's PR with checks, review and open review threads"
 }

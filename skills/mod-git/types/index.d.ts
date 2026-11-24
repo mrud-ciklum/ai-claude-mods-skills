@@ -22,6 +22,8 @@ export type PullState = {
   checks: { passed: number; failed: number; pending: number }
   comments: number
   url: string
+  /** Its review threads not yet resolved, and of those the ones whose last word is not the author's: they wait for the author. */
+  threads?: { open: number; waiting: number }
 }
 
 declare module 'claude-code' {
