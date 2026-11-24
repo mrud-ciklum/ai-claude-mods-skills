@@ -7,6 +7,15 @@ declare const setTimeout: (f: (v?: unknown) => void, ms: number) => unknown
 const settle = () => new Promise(r => setTimeout(r, 60))
 
 const MOD = '/work/repo/skills/demo'
+// The rows draw into the band's own row (context-band), which the engine asks only of a plugin
+// of that name: this stand-in hooks it and passes down to what lies beneath.
+const BAND_ROW = {
+  name: 'context-band',
+  register: (on: On) => {
+    on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => next(e))
+  },
+}
+
 const BAND = { plugin: 'test-watch', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 30, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 const PANE = { plugin: 'test-watch', surface: 'desktop', component: 'Pane', requestId: 'test-watch', props: { title: 'Test watch', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } } as const
 const OUTPUT = '(pass) reads a thing [3.10ms]\n(fail) writes a thing [2.00ms]\n  AssertionError: nope\n\n 1 pass\n 1 fail\nRan 2 tests across 1 file.'
@@ -37,7 +46,7 @@ type Caller = { tool: { call: (input: Record<string, unknown>) => Promise<unknow
 const edit = ($: unknown, file: string) => ($ as Caller).tool.call({ tool: 'Edit', file_path: file, old_string: 'a', new_string: 'b' })
 const endTurn = ($: unknown, turnId: string) => ($ as Caller).turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId, reason: 'answer' } as never)
 
-test("after a turn that edited a mod's files, that mod's tests run once and the row shows the result", async ($, on) => {
+test("after a turn that edited a mod's files, that mod's tests run once and the row shows the result", { plugins: [BAND_ROW] }, async ($, on) => {
   const w = world(on, () => ({ exitCode: 1, stdout: OUTPUT }))
   await edit($, `${MOD}/hooks/register.tsx`)
   await edit($, `${MOD}/hooks/guard.ts`)
@@ -47,7 +56,7 @@ test("after a turn that edited a mod's files, that mod's tests run once and the 
   expect(w.runs).toEqual([['/bin/claude', 'plugin', 'test', MOD]])
   const band = await $.ui.mount(BAND)
   const texts = (await band.findAll({ type: 'Text' })).map(found => found.text)
-  expect(texts).toEqual(['Tests', 'demo 1/2 ✗'])
+  expect(texts.slice(texts.indexOf('Tests'), texts.indexOf('Tests') + 3)).toEqual(['Tests', '1 ✗', 'demo 1/2'])
   await band.press({ key: 'tests-why' })
   await band.unmount()
   const pane = await $.ui.mount(PANE)
@@ -55,7 +64,7 @@ test("after a turn that edited a mod's files, that mod's tests run once and the 
   await pane.unmount()
 })
 
-test('a passing run shows its count; a turn with no edit runs nothing; Hide clears the row', async ($, on) => {
+test('a passing run is a quiet chip with its count; a turn with no edit runs nothing', { plugins: [BAND_ROW] }, async ($, on) => {
   const w = world(on, () => ({ exitCode: 0, stdout: ' 41 pass\n 0 fail\n' }))
   await endTurn($, 'T0')
   await settle()
@@ -64,9 +73,9 @@ test('a passing run shows its count; a turn with no edit runs nothing; Hide clea
   await endTurn($, 'T1')
   await settle()
   const band = await $.ui.mount(BAND)
-  expect((await band.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['Tests', 'demo 41 ✓'])
-  await band.press({ key: 'tests-hide' })
-  expect(await band.find({ type: 'Text', text: 'Tests' })).toBeUndefined()
+  const texts = (await band.findAll({ type: 'Text' })).map(found => found.text)
+  expect(texts.slice(texts.indexOf('Tests'), texts.indexOf('Tests') + 2)).toEqual(['Tests', '41 ✓'])
+  expect(await band.find({ type: 'Button', key: 'tests-why' })).toBeUndefined()
   await band.unmount()
 })
 

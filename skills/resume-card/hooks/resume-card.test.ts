@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { ago, lastRecap } from './register'
+import { ago, lastRecap, shortAgo } from './register'
 
 const DIR = '/home/u/.claude/projects/-work-app'
 const NOW = Date.parse('2026-11-24T12:00:00Z')
@@ -35,6 +35,15 @@ function world(on: On, files: Record<string, { text: string; mtimeMs: number }>,
   on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
 }
 
+// The rows draw into the band's own row (context-band), which the engine asks only of a plugin
+// of that name: this stand-in hooks it and passes down to what lies beneath.
+const BAND_ROW = {
+  name: 'context-band',
+  register: (on: On) => {
+    on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => next(e))
+  },
+}
+
 const BAND = { plugin: 'resume-card', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 30, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 const PANE = { plugin: 'resume-card', surface: 'desktop', component: 'Pane', requestId: 'resume-card', props: { title: 'Last time here', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } } as const
 
@@ -46,12 +55,13 @@ const FILES = {
   'NOW.jsonl': { text: wrapUp('This very session.'), mtimeMs: NOW },
 }
 
-test("a new session shows how the last session in this folder ended, until its first prompt", async ($, on) => {
+test("a new session shows how the last session in this folder ended, until its first prompt", { plugins: [BAND_ROW] }, async ($, on) => {
   world(on, FILES)
   await $.session.start({ cwd: '/work/app/src', surface: 'desktop', isInteractive: true })
   const band = await $.ui.mount(BAND)
   const texts = (await band.findAll({ type: 'Text' })).map(found => found.text)
-  expect(texts).toEqual(['Last time here', '3 h ago', 'Added the importer; tests pass.'])
+  // On the band's grid: its name, how long ago in the figure column, the summary on one line.
+  expect(texts.slice(texts.indexOf('Last time'), texts.indexOf('Last time') + 3)).toEqual(['Last time', '3h', 'Added the importer; tests pass.'])
   expect(await band.find({ type: 'Button', key: 'resume-more', text: '1 more' })).toBeDefined()
   await band.unmount()
 
@@ -62,32 +72,32 @@ test("a new session shows how the last session in this folder ended, until its f
 
   await $.prompt.submit({ text: 'go on', wait: false, origin: { kind: 'composer' } })
   const after = await $.ui.mount(BAND)
-  expect(await after.find({ type: 'Text', text: 'Last time here' })).toBeUndefined()
+  expect(await after.find({ type: 'Text', text: 'Last time' })).toBeUndefined()
   await after.unmount()
 })
 
-test('Hide takes the card away', async ($, on) => {
+test('Hide takes the card away', { plugins: [BAND_ROW] }, async ($, on) => {
   world(on, FILES)
   await $.session.start({ cwd: '/work/app/src', surface: 'desktop', isInteractive: true })
   const band = await $.ui.mount(BAND)
   await band.press({ key: 'resume-hide' })
-  expect(await band.find({ type: 'Text', text: 'Last time here' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'Last time' })).toBeUndefined()
   await band.unmount()
 })
 
-test('no earlier session with a summary, or the card switched off: no row', async ($, on) => {
+test('no earlier session with a summary, or the card switched off: no row', { plugins: [BAND_ROW] }, async ($, on) => {
   world(on, { 'c.jsonl': FILES['c.jsonl'] }, JSON.stringify({ off: [] }))
   await $.session.start({ cwd: '/work/app/src', surface: 'desktop', isInteractive: true })
   const band = await $.ui.mount(BAND)
-  expect(await band.find({ type: 'Text', text: 'Last time here' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'Last time' })).toBeUndefined()
   await band.unmount()
 })
 
-test('switched off in the Mods panel, no row', async ($, on) => {
+test('switched off in the Mods panel, no row', { plugins: [BAND_ROW] }, async ($, on) => {
   world(on, FILES, JSON.stringify({ off: ['resume-card'] }))
   await $.session.start({ cwd: '/work/app/src', surface: 'desktop', isInteractive: true })
   const band = await $.ui.mount(BAND)
-  expect(await band.find({ type: 'Text', text: 'Last time here' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'Last time' })).toBeUndefined()
   await band.unmount()
 })
 
@@ -95,4 +105,5 @@ test('the last wrap-up of a tail is found, a cut first line is skipped, and ages
   expect(lastRecap(`ut of a cut row"}\n${wrapUp('First.')}\n${wrapUp('Second.', 'Merge?')}\n${said('bye')}`)).toEqual({ recap: 'Second.', ask: 'Merge?' })
   expect(lastRecap(said('nothing'))).toBeUndefined()
   expect([ago(NOW - 5 * 60_000, NOW), ago(NOW - 3 * HOUR, NOW), ago(NOW - 30 * HOUR, NOW), ago(NOW - 72 * HOUR, NOW)]).toEqual(['5 min ago', '3 h ago', 'yesterday', '3 days ago'])
+  expect([shortAgo(NOW - 5 * 60_000, NOW), shortAgo(NOW - 3 * HOUR, NOW), shortAgo(NOW - 72 * HOUR, NOW)]).toEqual(['5m', '3h', '3d'])
 })

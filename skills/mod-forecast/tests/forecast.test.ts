@@ -199,7 +199,7 @@ test("with the band beneath it, the chip goes into the band's line of quiet figu
   expect(texts).toEqual(['Context', 'Steps', '≈12', '5h limit', 'Task'])
 })
 
-test("at the band's set height the chip takes a blank row; with none left the rows at the bottom give way and a note you can press counts them", { plugins: [BAND_DRAWN] }, async ($, on) => {
+test("at the band's set height the chip fits while there is room, and no blank row is left; with none left the rows at the bottom give way and a note you can press counts them", { plugins: [BAND_DRAWN] }, async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   const band = { blank: 2 }
   answerWorldBandBeneath(on, e => [40_000, 50_000][e.index] ?? 0, () => String(band.blank))
@@ -215,7 +215,6 @@ test("at the band's set height the chip takes a blank row; with none left the ro
     '5h limit',
     'Sessions',
     'one more',
-    ' ',
     'Task',
   ])
   await roomy.unmount()

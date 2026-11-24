@@ -1364,17 +1364,17 @@ test('the band height: ▲ and ▼ step it a row a press from the toolbar, a cut
   expect(await ui.find({ type: 'Client' })).toBeUndefined()
   expect(await ui.find({ type: 'Button', key: 'band-auto' })).toBeUndefined()
 
-  // ▲ from auto: a row more than the band shows, a blank one; every press one row, ▼ one row back.
+  // ▲ from auto: a ceiling a row above what the band shows, so no blank row; every press one row, ▼ one row back.
   await ui.press({ key: 'band-taller' })
   const first = saved().rows as number
   expect(await ui.find({ type: 'Text', text: `height ${first}` })).toBeDefined()
-  expect(await blanks()).toBe(1)
+  expect(await blanks()).toBe(0)
   await ui.press({ key: 'band-taller' })
   expect(saved()).toEqual({ rows: first + 1, isMenuOpen: true })
-  expect(await blanks()).toBe(2)
+  expect(await blanks()).toBe(0)
   await ui.press({ key: 'band-shorter' })
   expect(saved()).toEqual({ rows: first, isMenuOpen: true })
-  expect(await blanks()).toBe(1)
+  expect(await blanks()).toBe(0)
 
   // Details opened at that height: what does not fit leaves from the bottom and a note counts it;
   // the context row and the task stay, and each ▲ brings back one row, each ▼ takes one.
@@ -1478,20 +1478,20 @@ test('a set height counts the toolbar: shutting the menu makes the band that muc
   // A blank row is a no-break space (BLANK_ROW), which no surface collapses.
   const blanks = async () => (await ui.findAll({ type: 'Text', text: /^\u00a0$/ })).length
 
-  // A height a row taller than the band: one blank row with the menu open.
+  // A height a row taller than the band: a ceiling, not a floor, so no blank row fills it.
   expect(await drawnTexts(ui)).toContain('height auto')
   await ui.press({ key: 'band-taller' })
   expect(await ui.find({ type: 'Text', text: /^height \d+$/ })).toBeDefined()
-  expect(await blanks()).toBe(1)
+  expect(await blanks()).toBe(0)
 
-  // Shut: the toolbar's row goes and the band with it; the blank row stays one.
+  // Shut: the toolbar's row goes and the band with it; still no blank row.
   await ui.press({ key: 'band-menu' })
   expect(await ui.find({ type: 'Button', key: 'runners' })).toBeUndefined()
   expect(await drawnTexts(ui)).toContain('Task')
-  expect(await blanks()).toBe(1)
+  expect(await blanks()).toBe(0)
 
   // Open again: as before.
   await ui.press({ key: 'band-menu' })
   expect(await ui.find({ type: 'Button', key: 'runners' })).toBeDefined()
-  expect(await blanks()).toBe(1)
+  expect(await blanks()).toBe(0)
 })

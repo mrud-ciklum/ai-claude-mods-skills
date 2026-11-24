@@ -3,6 +3,15 @@ import type { On } from 'claude-code'
 
 import { rememberPrompt, soundsLikeCorrection } from './register'
 
+// The rows draw into the band's own row (context-band), which the engine asks only of a plugin
+// of that name: this stand-in hooks it and passes down to what lies beneath.
+const BAND_ROW = {
+  name: 'context-band',
+  register: (on: On) => {
+    on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => next(e))
+  },
+}
+
 const BAND = { plugin: 'lesson-catcher', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 30, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 
 function world(on: On, switches?: string) {
@@ -25,7 +34,7 @@ function world(on: On, switches?: string) {
 
 const say = ($: unknown, text: string) => ($ as { prompt: { submit: (i: never) => Promise<unknown> } }).prompt.submit({ text, wait: false, origin: { kind: 'composer' } } as never)
 
-test('a correction brings a Remember button that has the model save it; the next prompt is not caught again', async ($, on) => {
+test('a correction brings a Remember button that has the model save it; the next prompt is not caught again', { plugins: [BAND_ROW] }, async ($, on) => {
   const w = world(on)
   await say($, 'Ти знову поставив тире, я ж просив дефіс.')
   const band = await $.ui.mount(BAND)
@@ -37,7 +46,7 @@ test('a correction brings a Remember button that has the model save it; the next
   await band.unmount()
 })
 
-test('Dismiss clears it, and a prompt that is no correction brings nothing', async ($, on) => {
+test('Dismiss clears it, and a prompt that is no correction brings nothing', { plugins: [BAND_ROW] }, async ($, on) => {
   world(on)
   await say($, 'I already told you not to merge on GitHub.')
   const band = await $.ui.mount(BAND)
@@ -48,7 +57,7 @@ test('Dismiss clears it, and a prompt that is no correction brings nothing', asy
   await band.unmount()
 })
 
-test('switched off in the Mods panel, nothing is caught', async ($, on) => {
+test('switched off in the Mods panel, nothing is caught', { plugins: [BAND_ROW] }, async ($, on) => {
   world(on, JSON.stringify({ off: ['lesson-catcher'] }))
   await ($ as never as { session: { start: (i: never) => Promise<unknown> } }).session.start({ cwd: '/', surface: 'desktop', isInteractive: true } as never)
   await say($, 'You did it again.')

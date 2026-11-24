@@ -701,8 +701,8 @@ function insertInto(ui: ElementTable, node: unknown, slot: string, piece: unknow
   return null
 }
 
-// The band's middle in exactly `rows` rows: what it holds from the top while it
-// fits, then a note of the rows left out, then blank rows to the end. A column
+// The band's middle in at most `rows` rows: what it holds from the top while it
+// fits, then a note of the rows left out. A column
 // that runs past the end is cut inside; the slots stay, empty if need be, so a
 // mod placing later still finds them, and the engine's own nodes always stay:
 // a surface draws its part there. A middle fitted before keeps its count.
@@ -723,7 +723,8 @@ function fitBand(ui: ElementTable, middle: unknown, rows: number, columns: numbe
   const cut = isWhole ? { kept: content, used: total } : trimRows(content, Math.max(0, room - 1), columns)
   const out = outBefore + total - cut.used
   const noteRows = out > 0 && room > 0 ? 1 : 0
-  const blank = Math.max(0, room - cut.used - noteRows)
+  // The set height is a ceiling, not a floor: a band with less to show is shorter, never padded.
+  const blank = 0
 
   return (
     <Box key={`${FIT_PREFIX}${room}`} flexDirection="column">
