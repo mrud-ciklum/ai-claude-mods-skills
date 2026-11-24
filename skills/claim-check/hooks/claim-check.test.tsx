@@ -1128,7 +1128,7 @@ test('Wrong marks a flag as false, writes it to the project file, and the pane c
   expect(await pane.find({ type: 'Button', key: 'wrong-0' })).toBeUndefined()
   const file = written.get('/home/u/.claude/projects/-work-app/claim-check-feedback.jsonl') ?? ''
   expect(JSON.parse(file.trim())).toMatchObject({ verdict: 'unverified', claim: 'the deploy is green', priority: 1 })
-  expect((await pane.find({ type: 'Text', text: /Marked wrong in this project so far/ }))?.text).toContain('unverified 1')
+  expect((await pane.find({ type: 'Text', text: /Marked wrong in this project/ }))?.text).toContain('unverified 1')
   await pane.unmount()
 })
 

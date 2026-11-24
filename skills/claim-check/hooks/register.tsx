@@ -306,6 +306,14 @@ async function markWrong($: EngineInterface, turnId: string, index: number) {
   await update($, wrongTally, () => tallyOf(kept))
 }
 
+// The project's feedback file counted once a session, so the pane shows the tally before any press.
+async function loadTally($: EngineInterface) {
+  const dir = await projectDir($)
+  if (dir === undefined) return
+  const text = await $.fs.read(`${dir}/${FEEDBACK}`).catch(() => '')
+  await update($, wrongTally, () => tallyOf(text.split('\n').filter(Boolean)))
+}
+
 async function dig($: EngineInterface, turnId: string, index: number) {
   const check = await read($, last)
   const claim = check?.turnId === turnId ? check.claims[index] : undefined
@@ -336,6 +344,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await watchSwitch($)
     void logTiming($, { version: VERSION, event: 'loaded', root: $.plugin.root, judge }).catch(() => undefined)
+    void loadTally($).catch(() => undefined)
     // A reload drops a check in flight, and its "checking" state would stay up for good.
     await update($, last, (cur): Check | null =>
       cur?.status === 'checking' ? { ...cur, status: 'interrupted' } : cur,
@@ -725,13 +734,13 @@ export const register: Register = (on, options) => {
             )}
           </Box>
         ))}
-        {tally ? (
-          <Text dimColor>
-            Marked wrong in this project so far: {Object.entries(tally).map(([v, n]) => `${v} ${n}`).join(', ')}. Wrong writes the flag to {FEEDBACK} in the project's folder under ~/.claude/projects.
-          </Text>
-        ) : (
-          <Text dimColor>Wrong marks a flag as false and writes it to {FEEDBACK} in the project's folder under ~/.claude/projects.</Text>
-        )}
+        <Text dimColor>
+          {tally && Object.keys(tally).length > 0
+            ? `Marked wrong in this project: ${Object.entries(tally)
+                .map(([v, n]) => `${v} ${n}`)
+                .join(', ')} (${FEEDBACK}).`
+            : `Wrong: the flag is false; it is saved to ${FEEDBACK} in the project's folder.`}
+        </Text>
         {legend}
       </Box>
     )
