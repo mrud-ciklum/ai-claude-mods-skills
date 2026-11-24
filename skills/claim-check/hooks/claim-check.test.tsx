@@ -421,18 +421,47 @@ test('the row is two lines: the counts with Verify and Details at their right en
   }
 })
 
-// Another plugin's row in the band, standing for the readings line (context-band).
-const READINGS_ROW = {
+// The band's row (context-band) with its three slots, the readings line holding the context.
+const BAND_ROW = {
   name: 'context-band',
   register: (on: On) => {
     on('ui.render', { component: 'AbovePrompt' }, async ($, e) => {
-      const { Text } = $.ui.resolve(e)
-      return <Text>Context 30%</Text>
+      const { Box, Text } = $.ui.resolve(e)
+      return (
+        <Box flexDirection="column">
+          <Box key="context-band:chips" columnGap={2} flexWrap="wrap">
+            <Text>Context 30%</Text>
+          </Box>
+          <Box key="context-band:meters" flexDirection="column" />
+          <Box key="context-band:sections" flexDirection="column" />
+        </Box>
+      )
     })
   },
 }
 
-test('in the band every other row comes first, the readings line on top, and this row last', { plugins: [READINGS_ROW] }, async ($, on) => {
+// The texts on screen now, in order: a card waiting hidden for the pointer is left out.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+const textsIn = (node: unknown, isShownOnly: boolean): string[] => {
+  if (typeof node === 'string' || typeof node === 'number') return [String(node)]
+  if (typeof node !== 'object' || node === null) return []
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') return []
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+const cardIn = (node: unknown, scope: string): unknown => {
+  if (typeof node !== 'object' || node === null) return undefined
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope) return drawn
+  for (const child of drawn.children ?? []) {
+    const found = cardIn(child, scope)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+test('with the band, the check is a chip on its line with a card under the pointer, and its own row is gone', { plugins: [BAND_ROW] }, async ($, on) => {
   on('clock.now', () => ({ value: Date.parse('2026-11-18') }))
   on('session.messages', () => ({ value: MESSAGES }))
   on('model.complete', () => reply('{"ok":3,"claims":[{"c":"the deploy is green","s":"n","r":"","q":"","v":1,"p":1}]}'))
@@ -442,9 +471,67 @@ test('in the band every other row comes first, the readings line on top, and thi
   await settle()
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
-  expect(texts[0]).toBe('Context 30%')
-  expect(texts[texts.length - 1]).toContain('deploy is green')
+  const root = (await ui.findAll({}))[0]
+  // The space between the chip's name and figure is drawn, not read.
+  const shown = textsIn(root, true).filter(text => text.trim() !== '')
+  // One line: the context, then the claims chip; no glyph leads it and no row of its own follows.
+  expect(shown.slice(0, 3)).toEqual(['Context 30%', 'Claims', '1'])
+  expect((await ui.find({ type: 'Text', text: '1' }))?.props.color).toBe('warning')
+  expect(await ui.find({ type: 'Button', key: 'details' })).toBeUndefined()
+  expect(shown.join(' ')).not.toMatch(/[?◷∴≈✎↑]/)
+  // A key claim nothing backs: a row with Verify, its words in the row.
+  expect(await ui.find({ type: 'Button', key: 'claims-verify' })).toBeDefined()
+  expect(shown.join(' ')).toContain('unverified, key')
+  // The card, hidden until the pointer is on the chip: the counts in words, then the claim.
+  const card = textsIn(cardIn(root, 'claim-check:chip'), false)
+  expect(card.slice(0, 2)).toEqual(['Claims', '1'])
+  expect(card[2]).toMatch(/^1 unverified \(1 key\) · 3 backed/)
+  expect(card[3]).toContain('deploy is green')
+  await ui.unmount()
+})
+
+test('a press on the chip shows the pane, a second hides it; one behind another pane comes to the front; a surface without panes says why', { plugins: [BAND_ROW] }, async ($, on) => {
+  on('clock.now', () => ({ value: Date.parse('2026-11-18') }))
+  on('session.messages', () => ({ value: MESSAGES }))
+  on('model.complete', () => reply('{"ok":3,"claims":[{"c":"the deploy is green","s":"n","r":"","q":"","v":1,"p":1}]}'))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const world = { calls: [] as string[], panes: [] as { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }[], isPlaced: true, toasts: [] as string[] }
+  on('ui.panes', () => ({ value: world.panes }))
+  on('ui.open', (_, e) => {
+    world.calls.push(`open ${e.id}`)
+    if (world.isPlaced) world.panes = [{ id: e.id, title: e.title ?? e.id, isShown: true, isFocused: false, isPlaced: true }]
+    return { value: world.isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: 'this surface places no panes' } }
+  })
+  on('ui.close', (_, e) => {
+    world.calls.push(`close ${e.id}`)
+    world.panes = world.panes.filter(pane => pane.id !== e.id)
+    return { value: undefined }
+  })
+  on('ui.toast', (_, e) => {
+    world.toasts.push(e.text)
+    return { value: undefined }
+  })
+
+  await $.turn.complete({ answer: ANSWER, durationMs: 1, isAborted: false, turnId: 'T1', reason: 'answer' })
+  await settle()
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+
+  await ui.press({ key: 'claims-chip' })
+  expect(world.calls).toEqual(['open claim-check'])
+  await ui.press({ key: 'claims-chip' })
+  expect(world.calls).toEqual(['open claim-check', 'close claim-check'])
+
+  // Open, but a tab behind the Mods panel: the press brings it to the front.
+  world.calls = []
+  world.panes = [{ id: 'claim-check', title: 'Claim check', isShown: false, isFocused: false, isPlaced: true }]
+  await ui.press({ key: 'claims-chip' })
+  expect(world.calls).toEqual(['close claim-check', 'open claim-check'])
+
+  world.calls = []
+  world.panes = []
+  world.isPlaced = false
+  await ui.press({ key: 'claims-chip' })
+  expect(world.toasts).toEqual(['Claim check details cannot open here: this surface places no panes'])
   await ui.unmount()
 })
 

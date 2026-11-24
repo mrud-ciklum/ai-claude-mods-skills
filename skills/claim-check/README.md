@@ -1,17 +1,29 @@
 # claim-check
 
-A Claude Code mod that checks every answer against the evidence the session actually had. After each answer, a second model reads the turn's tool output and sorts the answer's factual claims by what backs them. Claims with nothing behind them, or with evidence that says otherwise, show up in a row above the prompt.
+A Claude Code mod that checks every answer against the evidence the session actually had. After each answer, a second model reads the turn's tool output and sorts the answer's factual claims by what backs them. Claims with nothing behind them, or with evidence that says otherwise, show up above the prompt.
 
 It checks that a claim has a source. It does not check that the source is right.
 
 ## What you see
 
-Two lines above the prompt, under the other mods' rows, after each answer of 150 characters or more:
+After each answer of 150 characters or more:
 
-```
-▲ 1 key · ✗ 1 contradicted · ? 2 unverified · ≈ 1 inferred · ✓ 7 backed        [ Verify ] [ Details ]
-3 s · unverified, key: "the deploy is green"
-```
+- **With the band (context-band):** one chip on the band's line of readings, `Claims 2`: how many claims are worth a check. It is red when one is contradicted, amber when one is flagged, and `Claims ✓` in green when every claim it checked is backed. `Claims …` shows while it checks.
+  - With the pointer on the chip, its card says the counts in words and the claim that matters most:
+
+    ```
+    Claims   2  1 unverified, 1 assumed (1 key) · 7 backed · checked in 3 s
+                unverified, key: "the deploy is green"
+    ```
+
+  - A press on the chip shows the Details pane, and a second press hides it.
+  - Only when a contradicted or key claim is flagged, a row with **Verify** joins the band.
+- **Without the band** (claim-check installed alone): two lines above the prompt, after the other mods' rows:
+
+  ```
+  ▲ 1 key · ✗ 1 contradicted · ? 2 unverified · ≈ 1 inferred · ✓ 7 backed        [ Verify ] [ Details ]
+  3 s · unverified, key: "the deploy is green"
+  ```
 
 The second line names the claim that matters most. Quoted text is the answer's own words, kept only when the code finds them in the answer; unquoted text is the judge's reading of the claim.
 
@@ -28,7 +40,7 @@ The second line names the claim that matters most. Quoted text is the answer's o
 
 Each listed claim is also rated key, normal or minor. Key means you are likely to act on it.
 
-- **Details** opens a pane with every listed claim, its source and its priority, and a legend of the marks at its foot.
+- **Details** (or a press on the chip) shows a pane with every listed claim, its source and its priority, and a legend of the marks at its foot. A second press hides it; a pane waiting as a tab behind another comes to the front.
 - **Verify** sends the model a prompt to check the flagged claims with read-only tools.
 - **Dig** (per claim, in the pane) has the model measure one claim properly and correct it at its source if it was wrong.
 - **Wrong** (per claim, in the pane) says the flag is false. The claim shows as marked, and a line goes to `claim-check-feedback.jsonl` in the project's folder under `~/.claude/projects/` (the last 500). The pane counts them by verdict: that is how to tell which verdicts are wrong most often.
