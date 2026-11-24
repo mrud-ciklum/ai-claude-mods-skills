@@ -91,7 +91,8 @@ function answerWorld(on: On, clock: MockClock, files: Map<string, string>, usage
   return world
 }
 
-test('windows at rest are chips, the five-hour one first; from the amber step a window is a row with its bar and the time to its reset', { plugins: [BAND_ROW] }, async ($, on) => {
+// It draws on both surfaces and steps the clock: 2 to 4 seconds, too near the default 5 on a busy CI runner.
+test('windows at rest are chips, the five-hour one first; from the amber step a window is a row with its bar and the time to its reset', { plugins: [BAND_ROW], timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   answerWorld(on, clock, new Map(), windows(34, 12))
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })

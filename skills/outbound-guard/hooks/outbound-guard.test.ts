@@ -303,6 +303,9 @@ test('the reader: places, here-documents, here-strings and marked lines', () => 
   expect(segments("cat > a.md <<'EOF' && gh pr comment 1 --body-file a.md\nline with gh pr comment -b x\nEOF").map(s => s.words.map(w => w.text)[0])).toEqual(['cat', 'gh'])
   expect(segments('grep x <<< "gh pr comment -b y"').map(s => s.words.length)).toEqual([4])
   // `cd` with options, and a tag pushed by its keyword.
+  // Redirections are not refs: what the push sends is HEAD.
+  expect(plan('git push -q origin main 2>&1 | grep -v remote', '/w', '/h')).toEqual([{ kind: 'push', what: 'git push', dir: '/w', remote: 'origin', revs: ['main'] }])
+  expect(plan('git push > /tmp/push.log 2> /tmp/err.log', '/w', '/h')).toEqual([{ kind: 'push', what: 'git push', dir: '/w', remote: undefined, revs: ['HEAD'] }])
   expect(plan('cd -P /work/other && git push origin tag v1', '/w', '/h')).toEqual([{ kind: 'push', what: 'git push', dir: '/work/other', remote: 'origin', revs: ['refs/tags/v1'] }])
   expect(plan('echo "gh pr comment 1 -b x"', '/w', '/h')).toEqual([])
   expect(lineFindings(`x = '${TOKEN}' // outbound-guard: allow`, { config: NO_CONFIG, isGuarded: false })).toEqual([])

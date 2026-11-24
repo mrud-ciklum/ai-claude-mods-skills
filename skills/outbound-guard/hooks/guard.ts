@@ -295,7 +295,13 @@ export function steps(command: string, cwd: string | undefined, home: string | u
       at++
       while (at < words.length && (/^-/.test(words[at]?.text ?? '') || ASSIGN.test(words[at]?.text ?? ''))) at += words[at]?.text === '-u' ? 2 : 1
     }
-    const argv = words.slice(at)
+    // Redirections are not arguments: `2>&1`, `>out.log`, `> out.log`, `<in.txt`.
+    const argv: Word[] = []
+    for (let k = at; k < words.length; k++) {
+      const text = words[k]?.text ?? ''
+      if (/^(?:\d*|&)(?:>>?|<)(?:&\d+|&-)?$/.test(text)) k++ // the operator alone: its target is the next word
+      else if (!/^(?:\d*|&)(?:>>?|<)\S/.test(text)) argv.push(words[k] as Word)
+    }
     const scope: Scope = { dir, vars: new Map(vars), home }
     if (argv.length === 0) {
       // `S=/tmp/x` alone sets a variable for the rest of the command.
