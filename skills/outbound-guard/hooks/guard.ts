@@ -288,8 +288,9 @@ export function steps(command: string, cwd: string | undefined, home: string | u
       continue
     }
     const name = argv[0]?.text ?? ''
-    if ((name === 'cd' || name === 'pushd') && argv.length <= 2) {
-      const to = argv[1]
+    if (name === 'cd' || name === 'pushd') {
+      // `cd -P dir`, `cd -- dir`: the folder is the last word that is not an option.
+      const to = argv.slice(1).filter(w => !/^-[A-Za-z]*$|^--$/.test(w.text)).at(-1)
       dir = to === undefined ? home : pathOf(to, scope)
       continue
     }
@@ -376,7 +377,8 @@ function cliSend(argv: Word[], heredocs: string[], scope: Scope): Send | undefin
   if (cli === 'gh' && noun === 'repo' && verb === 'create') {
     const words = argv.slice(3)
     if (!words.some(w => w.text === '--push')) return undefined
-    const name = words.find((w, k) => !w.text.startsWith('-') && !/^-/.test(words[k - 1]?.text ?? '-'))?.text
+    // The repository's name is the first word, when it is not an option.
+    const name = words[0]?.text.startsWith('-') === false ? words[0].text : undefined
 
     return { kind: 'push', what: 'gh repo create --push', dir: scope.dir, remote: undefined, revs: ['--branches'], isNew: { target: name?.includes('/') ? repoPlace(name, 'github.com') : undefined } }
   }
@@ -530,7 +532,9 @@ function pushSend(argv: Word[], scope: Scope): Push | undefined {
     else if (!w.startsWith('-')) positional.push(w)
   }
   if (isDelete) return undefined
-  const [remote, ...refspecs] = positional
+  const [remote, ...given] = positional
+  // `tag v1` is the tag's own ref.
+  const refspecs = given.flatMap((spec, k) => (spec === 'tag' && given[k + 1] !== undefined ? [] : given[k - 1] === 'tag' ? [`refs/tags/${spec}`] : [spec]))
   for (const spec of refspecs) {
     const src = spec.replace(/^\+/, '').split(':')[0] ?? ''
     if (src !== '') revs.push(src)
@@ -560,7 +564,7 @@ const SECRETS: [string, RegExp][] = [
   ['a GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})/],
   ['a GitLab token', /\bglpat-[A-Za-z0-9_-]{20,}/],
   ['an Anthropic key', /\bsk-ant-[A-Za-z0-9_-]{20,}/],
-  ['an OpenAI key', /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}/],
+  ['an OpenAI key', /\bsk-(?!ant-)(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}/],
   ['an AWS access key', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ['a Slack token', /\bxox[abprs]-[A-Za-z0-9-]{10,}/],
   ['a Google API key', /\bAIza[0-9A-Za-z_-]{35}/],
@@ -573,8 +577,9 @@ const SECRETS: [string, RegExp][] = [
 const ALLOWED = /outbound-guard:\s*allow/
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g
+// What only looks like an address: a file named for a screen density (logo@2x.png) is one.
 const isHarmlessEmail = (email: string) =>
-  /(?:^git@|^noreply@|^no-reply@|@users\.noreply\.github\.com$|[@.]example\.(?:com|org|net)$|\.(?:local|test|invalid)$)/i.test(email)
+  /(?:^git@|^noreply@|^no-reply@|@users\.noreply\.github\.com$|[@.]example\.(?:com|org|net)$|\.(?:local|test|invalid)$|\.(?:png|jpe?g|gif|svg|webp|ico|pdf|css|js|ts|tsx|json|md|html)$)/i.test(email)
 
 // The first characters of a secret, enough to find it, never enough to use it.
 const masked = (s: string) => `${s.slice(0, 4)}…`
@@ -582,6 +587,11 @@ const masked = (s: string) => `${s.slice(0, 4)}…`
 const termPattern = (term: string) => new RegExp(`(?<![\\p{L}\\p{N}_])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu')
 
 export type Rules = { config: Config; isGuarded: boolean }
+
+// The findings the guarded list causes, by how they start: a refusal names the list only for these.
+export const NAME_FINDING = 'the name'
+export const EMAIL_FINDING = 'the e-mail address'
+export const isListFinding = (finding: string) => finding.includes(`${NAME_FINDING} "`) || finding.includes(`${EMAIL_FINDING} `)
 
 // What one line holds that must not go: keys always; where the place is guarded, the names
 // on the list and e-mail addresses.
@@ -593,8 +603,8 @@ export function lineFindings(line: string, rules: Rules): string[] {
     if (m) out.push(`${what} (${masked(m[0])})`)
   }
   if (rules.isGuarded) {
-    for (const term of rules.config.terms) if (termPattern(term).test(line)) out.push(`the name "${term}"`)
-    for (const email of line.match(EMAIL) ?? []) if (!isHarmlessEmail(email)) out.push(`the e-mail address ${email}`)
+    for (const term of rules.config.terms) if (termPattern(term).test(line)) out.push(`${NAME_FINDING} "${term}"`)
+    for (const email of line.match(EMAIL) ?? []) if (!isHarmlessEmail(email)) out.push(`${EMAIL_FINDING} ${email}`)
   }
 
   return out

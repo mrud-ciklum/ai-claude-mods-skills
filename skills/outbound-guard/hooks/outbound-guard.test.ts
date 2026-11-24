@@ -184,6 +184,14 @@ test('a push is checked by the commits the remote does not have yet', async ($, 
   const signed = (await w.bash($, 'git -C /work/app push')) ?? ''
   expect(signed).toContain(`commit abc1234 is signed with the e-mail address ${WORK}`)
   expect(signed).toContain('the message of commit abc1234: the name "Initech"')
+  // A file named for a screen density is no address, and a key's own issuer is named once.
+  log = commit({ added: ['<img src="logo@2x.png">', `k = "${['sk', 'ant', 'api03'].join('-')}-${'Ab1'.repeat(12)}"`] })
+  const one = (await w.bash($, 'git push')) ?? ''
+  expect(one).not.toContain('logo@2x.png')
+  expect(one).toContain('an Anthropic key')
+  expect(one).not.toContain('an OpenAI key')
+  // The guarded list is named only for what the list caused.
+  expect(one).not.toContain('counts as guarded')
   // A line marked for the guard is not read.
   log = commit({ added: [`const fake = '${TOKEN}' // outbound-guard: allow`] })
   expect(await w.bash($, 'git push')).toBeUndefined()
@@ -192,6 +200,8 @@ test('a push is checked by the commits the remote does not have yet', async ($, 
 test('gh repo create --push sends the whole history, and the guard reads all of it', async ($, on) => {
   const w = world(on, { git: repo({}, commit({ added: ['Initech'] })) })
   expect(await w.bash($, 'gh repo create me/new --public --source . --push')).toContain('the name "Initech"')
+  // Its name says where it goes: another owner is not guarded.
+  expect(await w.bash($, 'gh repo create acme-corp/tool --private --source . --push')).toBeUndefined()
   const listed = w.gitCalls.find(c => c.includes('log')) ?? []
   expect(listed).not.toContain('--not')
   expect(listed).toContain('--branches')
@@ -246,6 +256,8 @@ test('the reader: places, here-documents, here-strings and marked lines', () => 
   expect(place('ssh://git@github.com:22/me/app')).toBe('github.com:22/me/app')
   expect(segments("cat > a.md <<'EOF' && gh pr comment 1 --body-file a.md\nline with gh pr comment -b x\nEOF").map(s => s.words.map(w => w.text)[0])).toEqual(['cat', 'gh'])
   expect(segments('grep x <<< "gh pr comment -b y"').map(s => s.words.length)).toEqual([4])
+  // `cd` with options, and a tag pushed by its keyword.
+  expect(plan('cd -P /work/other && git push origin tag v1', '/w', '/h')).toEqual([{ kind: 'push', what: 'git push', dir: '/work/other', remote: 'origin', revs: ['refs/tags/v1'] }])
   expect(plan('echo "gh pr comment 1 -b x"', '/w', '/h')).toEqual([])
   expect(lineFindings(`x = '${TOKEN}' // outbound-guard: allow`, { config: NO_CONFIG, isGuarded: false })).toEqual([])
   // An enterprise-managed login holds an underscore, and is read whole.

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ProcessRunResult, Register } from 'claude-code'
 
-import { CONFIG_FILE, LOG_FORMAT, NO_CONFIG, isGuarded, mayBeOutbound, parseConfig, place, plan, pushFindings, refusal, sentText, textFindings } from './guard'
+import { CONFIG_FILE, LOG_FORMAT, NO_CONFIG, isGuarded, isListFinding, mayBeOutbound, parseConfig, place, plan, pushFindings, refusal, sentText, textFindings } from './guard'
 import type { Config, Post, Push, Rules } from './guard'
 
 const MOD_NAME = 'outbound-guard'
@@ -61,7 +61,7 @@ async function reviewPost($: EngineInterface, post: Post, config: Config): Promi
     else found.push(...textFindings({ label: file.label, text: sentText(text) }, rules))
   }
 
-  return [...problems, ...found, ...(found.length > 0 ? guardedNote(rules, target) : [])]
+  return [...problems, ...found, ...(found.some(isListFinding) ? guardedNote(rules, target) : [])]
 }
 
 async function reviewPush($: EngineInterface, push: Push, config: Config): Promise<string[]> {
@@ -87,7 +87,7 @@ async function reviewPush($: EngineInterface, push: Push, config: Config): Promi
   if (typeof listed === 'string') return []
   const found = pushFindings(listed.stdout, rules)
 
-  return [...found, ...(found.length > 0 ? guardedNote(rules, target) : [])]
+  return [...found, ...(found.some(isListFinding) ? guardedNote(rules, target) : [])]
 }
 
 export const register: Register = on => {
