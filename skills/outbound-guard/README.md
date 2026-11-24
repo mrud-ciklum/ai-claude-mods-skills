@@ -32,6 +32,16 @@ Pushes: `git push`, and `gh repo create --push`, which pushes the whole history.
 - When the push goes to a guarded place, a name on your list, an e-mail address, or a commit signed
   with a real e-mail address stops it too.
 
+Other commands:
+
+- `git commit` in a guarded repository, while git is set to sign it with a real e-mail address:
+  the address would go out with the next push.
+- `gh pr merge` into a guarded repository. GitHub signs the commits of a merge it makes (merge,
+  squash or rebase) with the account's e-mail address unless the account keeps it private. Merge
+  locally and push instead, or set `allowGithubMerge` once the account's address is private.
+- `gh auth switch`, `login` and `logout`, when `lockGhAccount` is set: the active account stays as
+  it is, and one command can use another account with `GH_TOKEN="$(gh auth token --user <login>)"`.
+
 ## Your list
 
 `~/.claude/outbound-guard.json` is yours and never goes in a repository, since it names clients:
@@ -40,7 +50,9 @@ Pushes: `git push`, and `gh repo create --push`, which pushes the whole history.
 {
   "terms": ["Acme"],
   "guarded": ["github.com/your-login"],
-  "mentions": ["your-login"]
+  "mentions": ["your-login"],
+  "lockGhAccount": true,
+  "allowGithubMerge": false
 }
 ```
 
@@ -48,6 +60,8 @@ Pushes: `git push`, and `gh repo create --push`, which pushes the whole history.
 - `guarded`: a host, or a host and an owner. Anything under it is guarded. A post whose target the
   guard cannot work out counts as guarded.
 - `mentions`: the logins a post may @-mention.
+- `lockGhAccount`: refuse `gh auth switch`, `login` and `logout`. Off unless set.
+- `allowGithubMerge`: let GitHub merge pull requests into a guarded repository. Off unless set.
 
 With no file, keys, inline texts, em dashes and mentions are still checked, and no place is
 guarded. A file that is not valid JSON of this shape stops every post and push until it is

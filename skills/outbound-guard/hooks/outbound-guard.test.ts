@@ -223,7 +223,8 @@ test('with no list, keys and inline bodies are still caught; a broken list stops
   const said = (await none.bash($, 'gh pr comment 1 -R me/app --body-file /tmp/b.md')) ?? ''
   expect(said).toContain('a GitHub token')
   expect(said).not.toContain('Initech')
-  expect(parseConfig(CONFIG)).toEqual({ terms: ['Initech'], guarded: ['github.com/me'], mentions: ['me', 'friend'] })
+  expect(parseConfig(CONFIG)).toEqual({ terms: ['Initech'], guarded: ['github.com/me'], mentions: ['me', 'friend'], lockGhAccount: false, allowGithubMerge: false })
+  expect(() => parseConfig('{"lockGhAccount": "yes"}')).toThrow('"lockGhAccount" is not true or false')
   expect(() => parseConfig('{"terms": "Initech"}')).toThrow('"terms" is not a list of strings')
 })
 
@@ -248,6 +249,51 @@ test('switched off in the Mods panel, it lets every command through', async ($, 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   expect(await w.bash($, 'gh pr comment 1 --body "inline"')).toBeUndefined()
   expect(w.ran).toEqual(['gh pr comment 1 --body "inline"'])
+})
+
+test('with the account locked, gh auth switch, login and logout are refused', async ($, on) => {
+  const w = world(on, { config: JSON.stringify({ lockGhAccount: true }) })
+  expect(await w.bash($, 'gh auth switch --user other')).toContain('the active gh account stays as it is')
+  expect(await w.bash($, 'gh auth logout -u me')).toContain('lockGhAccount')
+  expect(await w.bash($, 'gh auth status')).toBeUndefined()
+  expect(await w.bash($, 'GH_TOKEN="$(gh auth token --user me)" gh pr view 1')).toBeUndefined()
+})
+
+test('with the account not locked, gh auth switch goes', async ($, on) => {
+  const w = world(on, { config: JSON.stringify({}) })
+  expect(await w.bash($, 'gh auth switch --user other')).toBeUndefined()
+})
+
+test("GitHub's own merge of a guarded repository is refused: it signs the commits with the account's address", async ($, on) => {
+  const w = world(on, { git: repo({ origin: 'https://github.com/me/app.git' }, '') })
+  expect(await w.bash($, 'gh pr merge 3 --rebase')).toContain('Merge locally instead')
+  expect(await w.bash($, 'gh pr merge 3 -R acme-corp/app --squash')).toBeUndefined()
+})
+
+test('with allowGithubMerge, GitHub may merge a guarded repository', async ($, on) => {
+  const w = world(on, { config: JSON.stringify({ guarded: ['github.com/me'], allowGithubMerge: true }), git: repo({ origin: 'https://github.com/me/app.git' }, '') })
+  expect(await w.bash($, 'gh pr merge 3 --rebase')).toBeUndefined()
+})
+
+test('a commit in a guarded repository must be signed with a noreply address', async ($, on) => {
+  let email = 'me@company.example.org'
+  const w = world(on, {
+    git: argv => (argv.includes('user.email') ? { stdout: `${email}\n` } : repo({ origin: 'git@github.com:me/app.git' }, '')(argv)),
+  })
+  expect(await w.bash($, 'cd /work/app && git commit -qm "x"')).toBeUndefined() // example.org is no one's real address
+  email = ['me', 'company.io'].join('@')
+  expect(await w.bash($, 'cd /work/app && git commit -qm "x"')).toContain('set git config user.email in this repository to a noreply address')
+  email = '1+me@users.noreply.github.com'
+  expect(await w.bash($, 'git -C /work/app commit -qam "x"')).toBeUndefined()
+  expect(await w.bash($, 'git commit --dry-run')).toBeUndefined()
+})
+
+test('glab: a description written into the command is refused; one read from a file goes, and an API write is read', async ($, on) => {
+  const w = world(on, { files: { '/tmp/d.md': 'Fixes the import.' }, git: repo({ origin: 'https://gitlab.example.com/team/app.git' }, '') })
+  expect(await w.bash($, 'glab mr create -t "Import" -d "Fixes the import"')).toContain('the text of -d is written into the command')
+  expect(await w.bash($, 'glab mr create -t "Import" -d "$(cat /tmp/d.md)"')).toBeUndefined()
+  expect(await w.bash($, 'glab api -X POST projects/1/issues -f description="x"')).toContain('the field description is written into the command')
+  expect(await w.bash($, 'glab api -X PUT projects/1/merge_requests/2 --input /tmp/d.md')).toBeUndefined()
 })
 
 test('the reader: places, here-documents, here-strings and marked lines', () => {

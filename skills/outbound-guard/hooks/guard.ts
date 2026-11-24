@@ -12,9 +12,15 @@ export type Config = {
   guarded: string[]
   // The logins a post may @-mention, in lower case: anyone else is notified only on the user's word.
   mentions: string[]
+  // The active gh account stays as it is: `gh auth switch`, `login` and `logout` are refused.
+  lockGhAccount: boolean
+  // GitHub may merge a pull request into a guarded repository. Off, since GitHub signs the commits
+  // of a merge it makes (merge, squash or rebase) with the account's e-mail address unless the
+  // account keeps it private.
+  allowGithubMerge: boolean
 }
 
-export const NO_CONFIG: Config = { terms: [], guarded: [], mentions: [] }
+export const NO_CONFIG: Config = { terms: [], guarded: [], mentions: [], lockGhAccount: false, allowGithubMerge: false }
 
 export function parseConfig(text: string): Config {
   const raw: unknown = JSON.parse(text)
@@ -26,8 +32,21 @@ export function parseConfig(text: string): Config {
 
     return (value as string[]).map(v => v.trim()).filter(v => v !== '')
   }
+  const flag = (key: string): boolean => {
+    const value = (raw as Record<string, unknown>)[key]
+    if (value === undefined) return false
+    if (typeof value !== 'boolean') throw new Error(`"${key}" is not true or false`)
 
-  return { terms: list('terms'), guarded: list('guarded').map(place), mentions: list('mentions').map(m => m.replace(/^@/, '').toLowerCase()) }
+    return value
+  }
+
+  return {
+    terms: list('terms'),
+    guarded: list('guarded').map(place),
+    mentions: list('mentions').map(m => m.replace(/^@/, '').toLowerCase()),
+    lockGhAccount: flag('lockGhAccount'),
+    allowGithubMerge: flag('allowGithubMerge'),
+  }
 }
 
 // A remote or a repository as one comparable string: host and path in lower case, with no
@@ -56,7 +75,7 @@ export type Word = { text: string; isLiteral: boolean }
 type Segment = { words: Word[]; heredocs: string[] }
 
 // The cheap test every Bash call goes through first: a command that names none of these sends nothing.
-export const mayBeOutbound = (command: string) => /\b(?:gh|glab)\b|\bgit\b[\s\S]*\bpush\b/.test(command)
+export const mayBeOutbound = (command: string) => /\b(?:gh|glab)\b|\bgit\b[\s\S]*\b(?:push|commit)\b/.test(command)
 
 const closeParen = (s: string, open: number): number => {
   let depth = 0
@@ -321,7 +340,13 @@ export type Post = {
   files: { label: string; path: string }[]
   // What is wrong before any text is read: a body written inline, a path the guard cannot find.
   problems: string[]
+  // `gh pr merge`: GitHub makes the commits, signed with the account's e-mail address.
+  isMerge?: boolean
 }
+// `gh auth switch`, `login` or `logout`: a change of the active account.
+export type Account = { kind: 'account'; what: string }
+// `git commit`: nothing leaves yet, but the commit is signed with the e-mail address git is set to.
+export type Commit = { kind: 'commit'; what: string; dir: string | undefined }
 export type Push = {
   kind: 'push'
   what: string
@@ -333,7 +358,7 @@ export type Push = {
   // A repository `gh repo create --push` makes: where it goes, and that no remote has its commits yet.
   isNew?: { target: string | undefined }
 }
-export type Send = Post | Push
+export type Send = Post | Push | Account | Commit
 
 const BODY_KEYS = new Set(['body', 'description', 'message', 'note', 'notes', 'comment', 'text'])
 const FILE_SUBSTITUTION = /^\$\(\s*(?:cat\s+(?:--\s+)?|<\s*)(['"]?)([^'"()\s]+)\1\s*\)$/
@@ -374,6 +399,8 @@ function cliSend(argv: Word[], heredocs: string[], scope: Scope): Send | undefin
   }
 
   if (noun === 'api') return apiSend(cli, argv.slice(2), heredocs, scope, post)
+  if (cli === 'gh' && noun === 'auth' && (verb === 'switch' || verb === 'login' || verb === 'logout')) return { kind: 'account', what: `gh auth ${verb}` }
+  if (cli === 'gh' && noun === 'pr' && verb === 'merge') post.isMerge = true
   if (cli === 'gh' && noun === 'repo' && verb === 'create') {
     const words = argv.slice(3)
     if (!words.some(w => w.text === '--push')) return undefined
@@ -505,7 +532,8 @@ function apiSend(cli: string, words: Word[], heredocs: string[], scope: Scope, p
 }
 
 // git push: what it sends is the commits its refs hold that the remote does not have yet.
-function pushSend(argv: Word[], scope: Scope): Push | undefined {
+// git commit: what it signs the commit with.
+function gitSend(argv: Word[], scope: Scope): Push | Commit | undefined {
   let dir = scope.dir
   let at = 1
   while (at < argv.length && argv[at]?.text !== 'push') {
@@ -516,8 +544,10 @@ function pushSend(argv: Word[], scope: Scope): Push | undefined {
       at += 2
     } else if (w === '-c' || w === '--git-dir' || w === '--work-tree' || w === '--namespace') at += 2
     else if (w.startsWith('-')) at++
+    else if (w === 'commit') break
     else return undefined // another subcommand
   }
+  if (argv[at]?.text === 'commit') return argv.some(w => w.text === '--dry-run') ? undefined : { kind: 'commit', what: 'git commit', dir }
   if (argv[at]?.text !== 'push') return undefined
   const positional: string[] = []
   const revs: string[] = []
@@ -550,7 +580,7 @@ export function plan(command: string, cwd: string | undefined, home: string | un
   const out: Send[] = []
   for (const { argv, heredocs, scope } of steps(command, cwd, home)) {
     const name = argv[0]?.text.replace(/^.*\//, '') ?? ''
-    const send = name === 'gh' || name === 'glab' ? cliSend(argv, heredocs, scope) : name === 'git' ? pushSend(argv, scope) : undefined
+    const send = name === 'gh' || name === 'glab' ? cliSend(argv, heredocs, scope) : name === 'git' ? gitSend(argv, scope) : undefined
     if (send) out.push(send)
   }
 
@@ -578,7 +608,7 @@ const ALLOWED = /outbound-guard:\s*allow/
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g
 // What only looks like an address: a file named for a screen density (logo@2x.png) is one.
-const isHarmlessEmail = (email: string) =>
+export const isHarmlessEmail = (email: string) =>
   /(?:^git@|^noreply@|^no-reply@|@users\.noreply\.github\.com$|[@.]example\.(?:com|org|net)$|\.(?:local|test|invalid)$|\.(?:png|jpe?g|gif|svg|webp|ico|pdf|css|js|ts|tsx|json|md|html)$)/i.test(email)
 
 // The first characters of a secret, enough to find it, never enough to use it.
@@ -692,7 +722,7 @@ export function refusal(what: string, problems: readonly string[]): string {
   const shown = unique.slice(0, 10)
 
   return [
-    `outbound-guard stopped this command before it ran: \`${what}\` sends text out of this machine, and that text breaks a rule.`,
+    `outbound-guard stopped this command before it ran (\`${what}\`): it breaks a rule for what leaves this machine.`,
     ...shown.map(p => `- ${p}`),
     ...(unique.length > shown.length ? [`- and ${unique.length - shown.length} more like these.`] : []),
     'Nothing was sent. Fix these and run it again. If one is a false alarm, tell the user and let them decide.',

@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ProcessRunResult, Register } from 'claude-code'
 
-import { CONFIG_FILE, LOG_FORMAT, NO_CONFIG, isGuarded, isListFinding, mayBeOutbound, parseConfig, place, plan, pushFindings, refusal, sentText, textFindings } from './guard'
-import type { Config, Post, Push, Rules } from './guard'
+import { CONFIG_FILE, LOG_FORMAT, NO_CONFIG, isGuarded, isHarmlessEmail, isListFinding, mayBeOutbound, parseConfig, place, plan, pushFindings, refusal, sentText, textFindings } from './guard'
+import type { Commit, Config, Post, Push, Rules } from './guard'
 
 const MOD_NAME = 'outbound-guard'
 const isOn = atom({ plugin: 'outbound-guard', key: 'isOn' } as const, true)
@@ -50,6 +50,10 @@ async function reviewPost($: EngineInterface, post: Post, config: Config): Promi
   const problems = [...post.problems]
   const target = post.target ?? (post.dir === undefined ? undefined : await remoteUrl($, post.dir, 'origin').then(url => (url === undefined ? undefined : place(url))))
   const rules: Rules = { config, isGuarded: isGuarded(target, config) }
+  if (post.isMerge && rules.isGuarded && !config.allowGithubMerge)
+    problems.push(
+      `GitHub signs the commits of a merge it makes (merge, squash or rebase) with the account's e-mail address, and ${target ?? 'this repository'} is guarded. Merge locally instead: check out the base branch, merge or fast-forward it, and push. Or, once the account keeps its address private, set "allowGithubMerge": true in ~/${CONFIG_FILE}.`,
+    )
   const found: string[] = []
   for (const item of post.texts) found.push(...textFindings(item, rules))
   for (const file of post.files) {
@@ -62,6 +66,20 @@ async function reviewPost($: EngineInterface, post: Post, config: Config): Promi
   }
 
   return [...problems, ...found, ...(found.some(isListFinding) ? guardedNote(rules, target) : [])]
+}
+
+// A commit in a guarded repository is signed with the address git is set to: a real one would go out with the next push.
+async function reviewCommit($: EngineInterface, commit: Commit, config: Config): Promise<string[]> {
+  if (commit.dir === undefined || config.guarded.length === 0) return []
+  const url = await remoteUrl($, commit.dir, 'origin')
+  if (url === undefined || !isGuarded(place(url), config)) return []
+  const r = await git($, commit.dir, ['config', 'user.email']).catch(() => undefined)
+  const email = r?.exitCode === 0 ? r.stdout.trim() : ''
+  if (email !== '' && isHarmlessEmail(email)) return []
+
+  return [
+    `${place(url)} is guarded, and this commit would be signed with ${email === '' ? 'no e-mail address git knows of' : `the e-mail address ${email}`}: set git config user.email in this repository to a noreply address first.`,
+  ]
 }
 
 async function reviewPush($: EngineInterface, push: Push, config: Config): Promise<string[]> {
@@ -114,7 +132,13 @@ export const register: Register = on => {
       return { deny: refusal(what, [`its list ~/${CONFIG_FILE} cannot be read (${errorText(err)}): ask the user to fix it.`]) }
     }
     const problems: string[] = []
-    for (const send of sends) problems.push(...(send.kind === 'post' ? await reviewPost($, send, config) : await reviewPush($, send, config)))
+    for (const send of sends) {
+      if (send.kind === 'post') problems.push(...(await reviewPost($, send, config)))
+      else if (send.kind === 'push') problems.push(...(await reviewPush($, send, config)))
+      else if (send.kind === 'commit') problems.push(...(await reviewCommit($, send, config)))
+      else if (config.lockGhAccount)
+        problems.push(`the active gh account stays as it is ("lockGhAccount" in ~/${CONFIG_FILE}). For one command, pass GH_TOKEN="$(gh auth token --user <login>)" instead.`)
+    }
 
     return problems.length === 0 ? next(e) : { deny: refusal(what, problems) }
   }).catch(($, e, next) =>

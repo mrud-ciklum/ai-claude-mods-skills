@@ -2,8 +2,6 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { ElementQuery, Engine, FoundElement, MockClock, Mounted } from 'claude-code/testing'
 import type {
   On,
-  RenderElement,
-  RenderNode,
   SessionContextBreakdown,
   SessionMeasureInput,
   SessionMessage,
@@ -928,61 +926,9 @@ test('switched off in the mods panel the band draws only what lies beneath and a
   expect(back.sections.map(section => section.id)).toEqual(['intro', 'context-band:progress'])
 })
 
-test('standing outside the other mods, the band moves their stacked pieces into its slots, in order', async ($, on) => {
-  mock.clock(on, { now: 1_000_000 })
-  // What the mods beneath stacked: a section piece of the panel, the forecast's and the limits' meters.
-  on('ui.render', { component: 'AbovePrompt' }, () =>
-    box(
-      null,
-      box('meter:03:mod-forecast', text('Forecast')),
-      box(null, box('meter:02:mod-limits', text('5h limit')), text('beneath'), box('section:00:mods', text('Mods list'))),
-    ),
-  )
-  answerMeasure(on)
-  await $.session.measure(MEASURED)
-  await $.tool.call({ tool: PROGRESS, percent: 30, task: 'Add retries to the fetcher', step: 'reading the code' })
-
-  const ui = await $.ui.mount({ plugin: 'context-band', surface: 'desktop', ...BAND })
-  const texts = await drawnTexts(ui)
-  const at = (text: string) => texts.indexOf(text)
-  expect(at('Context')).toBeLessThan(at('5h limit'))
-  expect(at('5h limit')).toBeLessThan(at('Forecast'))
-  expect(at('Forecast')).toBeLessThan(at('beneath'))
-  expect(at('beneath')).toBeLessThan(at('Mods list'))
-  expect(at('Mods list')).toBeLessThan(at('Task'))
-})
-
-test("at rest the context is the first chip of one line with the other mods' chips, in order; from 60% it is the full row again", async ($, on) => {
-  // What the mods beneath stacked: the machine's chip and the limits' chips.
-  on('ui.render', { component: 'AbovePrompt' }, () =>
-    box(null, box('chip:05:mod-machine', text('RAM'), text('24%')), box('chip:02:mod-limits', text('5h'), text('12%')), text('beneath')),
-  )
-  answerMeasure(on)
-  await $.session.measure({ ...MEASURED, context: { tokens: 80_000, window: 200_000, percent: 40 } })
-  const ui = await $.ui.mount({ plugin: 'context-band', surface: 'desktop', ...BAND })
-
-  const texts = await drawnTexts(ui)
-  const at = texts.indexOf('Context')
-  expect(texts.slice(at, at + 6)).toEqual(['Context', '40%', '5h', '12%', 'RAM', '24%'])
-  expect(texts).not.toContain('80k of 200k')
-  // The toolbar stays shut; ⋯ ends the line of chips.
-  expect(texts).not.toContain('height auto')
-  expect(texts.indexOf('⋯')).toBe(at + 6)
-
-  await $.session.measure(MEASURED)
-  const amber = await drawnTexts(ui)
-  expect(amber).toContain('124k of 200k')
-  expect(amber.indexOf('124k of 200k')).toBeLessThan(amber.indexOf('5h'))
-})
-
-// Plain element data, as a mod's hook hands it up the chain.
-function box(key: string | null, ...children: RenderNode[]): RenderElement {
-  return { type: 'Box', props: key === null ? { flexDirection: 'column' } : { key, flexDirection: 'column' }, children }
-}
-
-function text(value: string): RenderElement {
-  return { type: 'Text', children: [value] }
-}
+// Two tests here checked that the band moved the pieces other mods stacked beneath it into its
+// own line. The engine no longer hands a render hook the rows of other plugins (next(e) answers
+// the engine's own drawing), so each mod's row stands alone and that path never runs.
 
 test('a plan shows as a checklist under the task, counts the percent, times its steps and forecasts the rest', async ($, on) => {
   answerBandBeneath(on)
