@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, Mounted } from 'claude-code/testing'
 import type { On, RenderElement, SessionContextBreakdown, TurnStepInput, TurnStepResult } from 'claude-code'
 
 // The readings draw into the band's own row (context-band), which the engine asks
@@ -144,16 +144,17 @@ test('the steps left to auto-compaction are a chip; eight or fewer away, the chi
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'mod-forecast', surface, ...BAND })
-    const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+    const texts = await shownTexts(ui)
     // (167k - 62k) / 11k average growth = 9.5: about 10 steps.
     expect(texts).toEqual(['Steps', '≈10', 'beneath'])
+    expect(await cardTexts(ui, 'mod-forecast:Steps')).toEqual(['Steps left', '≈10', '+11k/step · last Read 8k'])
     await ui.unmount()
   }
 
   // A jump to 140k: (167k - 140k) / 33k average growth, about 1 step: still a chip, now red.
   await runStep($, 3)
   const near = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
-  const texts = (await near.findAll({ type: 'Text' })).map(found => found.text)
+  const texts = await shownTexts(near)
   expect(texts.slice(0, 2)).toEqual(['Steps', '≈1'])
   expect((await near.find({ type: 'Text', text: '≈1' }))?.props.color).toBe('error')
 })
@@ -166,7 +167,7 @@ test('with auto-compaction off the row says so and forecasts nothing', { plugins
   await runStep($, 1)
 
   const ui = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['Auto-compact', 'off', 'beneath'])
+  expect(await shownTexts(ui)).toEqual(['Auto-compact', 'off', 'beneath'])
 })
 
 test('before the first step and while switched off the band shows only what lies beneath', { plugins: [BAND_ROW] }, async ($, on) => {
@@ -180,10 +181,10 @@ test('before the first step and while switched off the band shows only what lies
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['beneath'])
+  expect(await shownTexts(ui)).toEqual(['beneath'])
   await runStep($, 0)
   await runStep($, 1)
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['beneath'])
+  expect(await shownTexts(ui)).toEqual(['beneath'])
 })
 
 test("with the band beneath it, the chip goes into the band's line of quiet figures, above the meter rows", { plugins: [BAND_DRAWN] }, async ($, on) => {
@@ -194,7 +195,7 @@ test("with the band beneath it, the chip goes into the band's line of quiet figu
   await runStep($, 1)
 
   const ui = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
-  const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+  const texts = await shownTexts(ui)
   expect(texts).toEqual(['Context', 'Steps', '≈12', '5h limit', 'Task'])
 })
 
@@ -208,7 +209,7 @@ test("at the band's set height the chip fits while there is room, and no blank r
   const forecast = ['Steps', '≈12']
 
   const roomy = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
-  expect((await roomy.findAll({ type: 'Text' })).map(found => found.text)).toEqual([
+  expect(await shownTexts(roomy)).toEqual([
     'Context',
     ...forecast,
     '5h limit',
@@ -220,7 +221,7 @@ test("at the band's set height the chip fits while there is room, and no blank r
 
   band.blank = 0
   const full = await $.ui.mount({ plugin: 'mod-forecast', surface: 'desktop', ...BAND })
-  expect((await full.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['Context', ...forecast, '5h limit', 'Task'])
+  expect(await shownTexts(full)).toEqual(['Context', ...forecast, '5h limit', 'Task'])
   expect((await full.find({ type: 'Button', key: 'band-show-all' }))?.text).toBe('▾ 2 more rows hidden · show all')
   // The engine's own node rides on, cut or not: the surface draws its part there.
   expect(JSON.stringify(await full.drawn())).toContain('"type":"engine"')
@@ -270,3 +271,55 @@ test('in quiet mode the row waits until auto-compaction is 8 steps away or neare
   // (167k - 140k) / 50k average: 1 step left, in red.
   expect((await ui.find({ type: 'Text', text: '≈1' }))?.props.color).toBe('error')
 })
+
+// ---- shown texts ----
+// A chip's card is drawn hidden (display none) and shown only while the pointer
+// is on the chip, in the hover group they share. These read the mounted tree.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+
+// The texts on screen now, in order: what waits hidden is left out.
+async function shownTexts(ui: Pick<Mounted, 'findAll'>): Promise<string[]> {
+  return textsIn((await ui.findAll({}))[0], true)
+}
+
+// The texts of the card the chip of hover group `scope` opens; undefined when it has none.
+async function cardTexts(ui: Pick<Mounted, 'findAll'>, scope: string): Promise<string[] | undefined> {
+  const card = cardIn((await ui.findAll({}))[0], scope)
+
+  return card === undefined ? undefined : textsIn(card, false)
+}
+
+function cardIn(node: unknown, scope: string): DrawnNode | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined
+  }
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope && drawn.hover.display === 'flex') {
+    return drawn
+  }
+  for (const child of drawn.children ?? []) {
+    const card = cardIn(child, scope)
+    if (card !== undefined) {
+      return card
+    }
+  }
+
+  return undefined
+}
+
+function textsIn(node: unknown, isShownOnly: boolean): string[] {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return [String(node)]
+  }
+  if (typeof node !== 'object' || node === null) {
+    return []
+  }
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') {
+    return []
+  }
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+// ---- end of shown texts ----

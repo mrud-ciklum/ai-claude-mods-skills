@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
+import type { MockClock, Mounted } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 // The readings draw into the band's own row (context-band), which the engine asks
@@ -99,7 +99,10 @@ test('the branch and its pull request are chips on the band\'s one line; one tha
   const world = answerWorld(on, clock)
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-git', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['Git', '3', 'PR', '#345', 'beneath'])
+  expect(await shownTexts(ui)).toEqual(['Git', '3', 'PR', '#345', 'beneath'])
+  // The pull request's checks, review and threads wait in its chip's card.
+  expect(await cardTexts(ui, 'mod-git:PR')).toEqual(['PR', '#345', 'checks 2/4, 1 failed, 1 running · changes requested · 2 open threads, 1 wait for the author'])
+  expect(await cardTexts(ui, 'mod-git:Git')).toEqual(['Git', '3', 'research/123-parser-bakeoff · ↑2 ↓1'])
   expect((await ui.find({ type: 'Text', text: '#345' }))?.props.color).toBe('error')
   // The threads are asked for with the pull request's own owner, name and number.
   expect(world.ran.find(argv => argv[1] === 'api')?.slice(-6)).toEqual(['-F', 'owner=o', '-F', 'name=r', '-F', 'number=345'])
@@ -117,7 +120,59 @@ test('a branch without a pull request shows only the git row', { plugins: [BAND_
   answerWorld(on, clock, 1)
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-git', surface: 'desktop', ...BAND })
-  const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+  const texts = await shownTexts(ui)
   expect(texts).toContain('Git')
   expect(texts).not.toContain('PR')
 })
+
+// ---- shown texts ----
+// A chip's card is drawn hidden (display none) and shown only while the pointer
+// is on the chip, in the hover group they share. These read the mounted tree.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+
+// The texts on screen now, in order: what waits hidden is left out.
+async function shownTexts(ui: Pick<Mounted, 'findAll'>): Promise<string[]> {
+  return textsIn((await ui.findAll({}))[0], true)
+}
+
+// The texts of the card the chip of hover group `scope` opens; undefined when it has none.
+async function cardTexts(ui: Pick<Mounted, 'findAll'>, scope: string): Promise<string[] | undefined> {
+  const card = cardIn((await ui.findAll({}))[0], scope)
+
+  return card === undefined ? undefined : textsIn(card, false)
+}
+
+function cardIn(node: unknown, scope: string): DrawnNode | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined
+  }
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope && drawn.hover.display === 'flex') {
+    return drawn
+  }
+  for (const child of drawn.children ?? []) {
+    const card = cardIn(child, scope)
+    if (card !== undefined) {
+      return card
+    }
+  }
+
+  return undefined
+}
+
+function textsIn(node: unknown, isShownOnly: boolean): string[] {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return [String(node)]
+  }
+  if (typeof node !== 'object' || node === null) {
+    return []
+  }
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') {
+    return []
+  }
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+// ---- end of shown texts ----

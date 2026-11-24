@@ -577,8 +577,8 @@ function messageOf(error: unknown): string {
 // the stacked pieces into its slots. Pieces are keyed `meter:NN:<mod>` or
 // `section:NN:<mod>` (NN the mod's order), and a slot keeps them in key order.
 // CHIPS_SLOT, first in the middle, is one line of the readings at rest, each a
-// chip keyed `chip:NN:<mod>`; a reading that needs a look is a full row in
-// METERS_SLOT instead (placeReadings sorts them).
+// chip keyed `chip:NN:<mod>`; a reading's card, shown while the pointer is on
+// its chip, waits hidden in METERS_SLOT (placeReadings puts both).
 // When the person set the band's height, the slots sit in a middle keyed
 // `FIT_PREFIX<rows>` that keeps to that many rows: a piece put in refits it,
 // what runs past the end leaves from the bottom, a note keyed
@@ -640,7 +640,9 @@ function placeInBand(ui: ElementTable, inner: RenderElement, slot: string, piece
 }
 
 // A meter mod's readings in the band: each one a chip on the band's one line of
-// figures, its tone saying when it needs a look. No reading grows into a row with a bar.
+// figures, its tone saying when it needs a look. A chip with more to say has a
+// card, drawn hidden in METERS_SLOT and shown while the pointer is on the chip:
+// the reading's row without a bar. No reading grows into a row with a bar.
 type BandReading = { row: GridRow; chip: GridChip; needsLook: boolean }
 
 function placeReadings(
@@ -652,27 +654,36 @@ function placeReadings(
   columns: number,
 ): RenderElement {
   const { Box } = ui
-  const atRest = readings
-  const looks: readonly BandReading[] = []
-  let placed = inner
-  if (atRest.length > 0) {
-    const chips = (
-      <Box key={pieceKey('chip', order, mod)} columnGap={CHIP_GAP} flexWrap="wrap">
-        {atRest.map(reading => gridChip(ui, reading.chip))}
-      </Box>
-    )
-    placed = placeInBand(ui, placed, CHIPS_SLOT, chips, columns)
+  if (readings.length === 0) {
+    return inner
   }
-  if (looks.length > 0) {
-    const rows = (
-      <Box key={pieceKey('meter', order, mod)} flexDirection="column">
-        {looks.map(reading => gridRow(ui, reading.row, columns))}
-      </Box>
-    )
-    placed = placeInBand(ui, placed, METERS_SLOT, rows, columns)
+  // A chip and its card share a hover group, one per reading across the family.
+  const scopeOf = (reading: BandReading) => `${mod}:${reading.chip.name}`.slice(0, 64)
+  const chips = (
+    <Box key={pieceKey('chip', order, mod)} columnGap={CHIP_GAP} flexWrap="wrap">
+      {readings.map(reading => (
+        <Box hover={{ scope: scopeOf(reading) }} flexShrink={0}>
+          {gridChip(ui, reading.chip)}
+        </Box>
+      ))}
+    </Box>
+  )
+  const placed = placeInBand(ui, inner, CHIPS_SLOT, chips, columns)
+  const cards = readings.filter(reading => reading.row.lines.some(line => line.text !== ''))
+  if (cards.length === 0) {
+    return placed
   }
+  const hidden = (
+    <Box key={pieceKey('meter', order, mod)} flexDirection="column">
+      {cards.map(reading => (
+        <Box display="none" hover={{ scope: scopeOf(reading), display: 'flex' }}>
+          {gridRow(ui, { name: reading.row.name, figure: reading.row.figure, ...(reading.row.color === undefined ? {} : { color: reading.row.color }), lines: reading.row.lines }, columns)}
+        </Box>
+      ))}
+    </Box>
+  )
 
-  return placed
+  return placeInBand(ui, placed, METERS_SLOT, hidden, columns)
 }
 
 // `node` with `piece` in its slot, in key order, and the middle of a set height

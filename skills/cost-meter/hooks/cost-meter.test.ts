@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import type { Mounted } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { shortTokens } from './register'
@@ -90,7 +91,7 @@ test('at the daily cap a call is not made, the calling mod is told, and the band
   expect(w.asked).toEqual([])
   expect(w.logs).toContain('not answered: aborted')
   const band = await $.ui.mount(BAND)
-  const texts = (await band.findAll({ type: 'Text' })).map(found => found.text)
+  const texts = await shownTexts(band)
   // A chip on the band's one line, in the error tone: the day's share of the cap.
   expect(texts.slice(texts.indexOf('Models'), texts.indexOf('Models') + 2)).toEqual(['Models', '100%'])
   await band.unmount()
@@ -118,3 +119,55 @@ test('switched off in the Mods panel, nothing is counted or stopped', { plugins:
 test('token counts read short', () => {
   expect([shortTokens(950), shortTokens(19_095), shortTokens(2_214_000)]).toEqual(['950', '19k', '2.2M'])
 })
+
+// ---- shown texts ----
+// A chip's card is drawn hidden (display none) and shown only while the pointer
+// is on the chip, in the hover group they share. These read the mounted tree.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+
+// The texts on screen now, in order: what waits hidden is left out.
+async function shownTexts(ui: Pick<Mounted, 'findAll'>): Promise<string[]> {
+  return textsIn((await ui.findAll({}))[0], true)
+}
+
+// The texts of the card the chip of hover group `scope` opens; undefined when it has none.
+async function cardTexts(ui: Pick<Mounted, 'findAll'>, scope: string): Promise<string[] | undefined> {
+  const card = cardIn((await ui.findAll({}))[0], scope)
+
+  return card === undefined ? undefined : textsIn(card, false)
+}
+
+function cardIn(node: unknown, scope: string): DrawnNode | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined
+  }
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope && drawn.hover.display === 'flex') {
+    return drawn
+  }
+  for (const child of drawn.children ?? []) {
+    const card = cardIn(child, scope)
+    if (card !== undefined) {
+      return card
+    }
+  }
+
+  return undefined
+}
+
+function textsIn(node: unknown, isShownOnly: boolean): string[] {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return [String(node)]
+  }
+  if (typeof node !== 'object' || node === null) {
+    return []
+  }
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') {
+    return []
+  }
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+// ---- end of shown texts ----

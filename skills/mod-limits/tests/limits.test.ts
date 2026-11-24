@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
+import type { MockClock, Mounted } from 'claude-code/testing'
 import type { On, SessionMeasureInput, SessionRateLimit } from 'claude-code'
 
 // The readings draw into the band's own row (context-band), which the engine asks
@@ -99,13 +99,16 @@ test('the windows are chips on the band\'s one line, the five-hour one first; fr
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'mod-limits', surface, ...BAND })
-    expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['5h', '34%', 'Week', '12%', 'beneath'])
+    expect(await shownTexts(ui)).toEqual(['5h', '34%', 'Week', '12%', 'beneath'])
+    // Under the pointer each chip opens its card: the window's full name and when it resets.
+    expect(await cardTexts(ui, 'mod-limits:5h')).toEqual(['5h limit', '34%', 'resets in 2h 10m'])
+    expect(await cardTexts(ui, 'mod-limits:Week')).toEqual(['Week limit', '12%', 'resets in 3d 4h'])
     await ui.unmount()
   }
 
   await $.session.measure(measured(windows(64, 12)))
   const amber = await $.ui.mount({ plugin: 'mod-limits', surface: 'desktop', ...BAND })
-  expect((await amber.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['5h', '64%', 'Week', '12%', 'beneath'])
+  expect(await shownTexts(amber)).toEqual(['5h', '64%', 'Week', '12%', 'beneath'])
   expect((await amber.find({ type: 'Text', text: '64%' }))?.props.color).toBe('warning')
   await amber.unmount()
 
@@ -172,9 +175,61 @@ test('in quiet mode the chips wait until a window reaches 60%', { plugins: [BAND
   world.write(SWITCHES, JSON.stringify({ off: [], quiet: true }))
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-limits', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['beneath'])
+  expect(await shownTexts(ui)).toEqual(['beneath'])
 
   await $.session.measure(measured(windows(64, 12)))
   expect(await ui.find({ type: 'Text', text: '5h' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: '64%' }))?.props.color).toBe('warning')
 })
+
+// ---- shown texts ----
+// A chip's card is drawn hidden (display none) and shown only while the pointer
+// is on the chip, in the hover group they share. These read the mounted tree.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+
+// The texts on screen now, in order: what waits hidden is left out.
+async function shownTexts(ui: Pick<Mounted, 'findAll'>): Promise<string[]> {
+  return textsIn((await ui.findAll({}))[0], true)
+}
+
+// The texts of the card the chip of hover group `scope` opens; undefined when it has none.
+async function cardTexts(ui: Pick<Mounted, 'findAll'>, scope: string): Promise<string[] | undefined> {
+  const card = cardIn((await ui.findAll({}))[0], scope)
+
+  return card === undefined ? undefined : textsIn(card, false)
+}
+
+function cardIn(node: unknown, scope: string): DrawnNode | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined
+  }
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope && drawn.hover.display === 'flex') {
+    return drawn
+  }
+  for (const child of drawn.children ?? []) {
+    const card = cardIn(child, scope)
+    if (card !== undefined) {
+      return card
+    }
+  }
+
+  return undefined
+}
+
+function textsIn(node: unknown, isShownOnly: boolean): string[] {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return [String(node)]
+  }
+  if (typeof node !== 'object' || node === null) {
+    return []
+  }
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') {
+    return []
+  }
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+// ---- end of shown texts ----

@@ -199,7 +199,9 @@ test('the band shows the measured fill, Details and Compact on the terminal and 
     expect(await ui.find({ type: 'Text', text: 'Context' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '62%' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '████████████░░░░░░░░' })).toBeUndefined() // no bar
-    expect(await ui.find({ type: 'Text', text: '124k of 200k' })).toBeUndefined() // a chip, not a row: the figure alone
+    // The token counts wait in the chip's card, shown only under the pointer.
+    expect((await shownTexts(ui)).some(text => text.includes('124k of 200k'))).toBe(false)
+    expect((await cardTexts(ui, 'context-band:context'))?.[2]).toMatch(/^124k of 200k/)
     expect(await ui.find({ type: 'Button', key: 'runners', text: 'Runners' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'mods', text: 'Mods' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'details' })).toBeDefined()
@@ -222,7 +224,9 @@ test('main-loop steps move the band mid-turn and toast once per level; subagent 
 
   const ui = await $.ui.mount({ plugin: 'context-band', surface: 'desktop', ...BAND })
   expect(await ui.find({ type: 'Text', text: '86%' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '172k of 200k' })).toBeUndefined() // a chip, not a row: the figure alone
+  // The token counts wait in the chip's card, shown only under the pointer.
+  expect((await shownTexts(ui)).some(text => text.includes('172k of 200k'))).toBe(false)
+  expect((await cardTexts(ui, 'context-band:context'))?.[2]).toMatch(/^172k of 200k/)
   expect(toasts).toEqual(['Context 85% full'])
 })
 
@@ -247,10 +251,12 @@ test('a main compaction blanks the fill, then shows the estimate once the compac
 
   world.isCompacted = true
   await clock.advance(500)
-  // At 15% the context is a chip on the line of quiet figures, not the full row.
+  // At 15% the context is a chip on the band's one line of figures.
   expect(await ui.find({ type: 'Text', text: '~15%' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^Context$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '30k of 200k' })).toBeUndefined()
+  // The token counts wait in the chip's card, shown only under the pointer.
+  expect((await shownTexts(ui)).some(text => text.includes('30k of 200k'))).toBe(false)
+  expect((await cardTexts(ui, 'context-band:context'))?.[2]).toMatch(/^30k of 200k/)
 
   await $.session.measure({ context: { window: 200_000 }, rateLimits: [], changed: ['context'] })
   expect(await ui.find({ type: 'Text', text: '~15%' })).toBeDefined()
@@ -1432,7 +1438,9 @@ test('the toolbar waits behind ⋯ at the right end of the readings; ⋯ opens a
     expect(await ui.find({ type: 'Button', key })).toBeUndefined()
   }
   expect(await ui.find({ type: 'Text', text: 'height auto' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: '124k of 200k' })).toBeUndefined() // a chip, not a row: the figure alone
+  // The token counts wait in the chip's card, shown only under the pointer.
+  expect((await shownTexts(ui)).some(text => text.includes('124k of 200k'))).toBe(false)
+  expect((await cardTexts(ui, 'context-band:context'))?.[2]).toMatch(/^124k of 200k/)
   expect((await menu())?.props.dimColor).toBe(true)
 
   // ⋯ opens the toolbar above the readings and keeps that for every session; pressed again it shuts.
@@ -1495,3 +1503,55 @@ test('a set height counts the toolbar: shutting the menu makes the band that muc
   expect(await ui.find({ type: 'Button', key: 'runners' })).toBeDefined()
   expect(await blanks()).toBe(0)
 })
+
+// ---- shown texts ----
+// A chip's card is drawn hidden (display none) and shown only while the pointer
+// is on the chip, in the hover group they share. These read the mounted tree.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+
+// The texts on screen now, in order: what waits hidden is left out.
+async function shownTexts(ui: Pick<Mounted, 'findAll'>): Promise<string[]> {
+  return textsIn((await ui.findAll({}))[0], true)
+}
+
+// The texts of the card the chip of hover group `scope` opens; undefined when it has none.
+async function cardTexts(ui: Pick<Mounted, 'findAll'>, scope: string): Promise<string[] | undefined> {
+  const card = cardIn((await ui.findAll({}))[0], scope)
+
+  return card === undefined ? undefined : textsIn(card, false)
+}
+
+function cardIn(node: unknown, scope: string): DrawnNode | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined
+  }
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope && drawn.hover.display === 'flex') {
+    return drawn
+  }
+  for (const child of drawn.children ?? []) {
+    const card = cardIn(child, scope)
+    if (card !== undefined) {
+      return card
+    }
+  }
+
+  return undefined
+}
+
+function textsIn(node: unknown, isShownOnly: boolean): string[] {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return [String(node)]
+  }
+  if (typeof node !== 'object' || node === null) {
+    return []
+  }
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') {
+    return []
+  }
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+// ---- end of shown texts ----

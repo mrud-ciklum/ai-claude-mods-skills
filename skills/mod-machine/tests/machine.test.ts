@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
+import type { MockClock, Mounted } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 // The readings draw into the band's own row (context-band), which the engine asks
@@ -60,8 +60,11 @@ test('memory and disk are chips on the band\'s one line, a nearly full disk in r
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ plugin: 'mod-machine', surface: 'desktop', ...BAND })
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['RAM', '24%', 'Disk', '96% · 20.7 GB free', 'beneath'])
-  expect((await ui.find({ type: 'Text', text: '96% · 20.7 GB free' }))?.props.color).toBe('error')
+  expect(await shownTexts(ui)).toEqual(['RAM', '24%', 'Disk', '96%', 'beneath'])
+  expect((await ui.find({ type: 'Text', text: '96%' }))?.props.color).toBe('error')
+  // What is free waits in each chip's card.
+  expect(await cardTexts(ui, 'mod-machine:RAM')).toEqual(['Memory', '24%', '76% free · slots 1/4'])
+  expect(await cardTexts(ui, 'mod-machine:Disk')).toEqual(['Disk', '96%', '20.7 GB free'])
   expect(JSON.parse(files.get(`${HOME}/.claude/mods/machine.json`) ?? 'null')).toMatchObject({ freePct: 76, slots: { live: 1, budget: 4 } })
   expect(world.ran).toEqual(['memory_pressure', 'df'])
 })
@@ -75,7 +78,7 @@ test('a fresh reading from another session is reused; amber memory is an amber c
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-machine', surface: 'desktop', ...BAND })
   expect(world.ran).toEqual([])
-  expect((await ui.findAll({ type: 'Text' })).map(found => found.text)).toEqual(['RAM', '60%', 'Disk', '50% · 230 GB free', 'beneath'])
+  expect(await shownTexts(ui)).toEqual(['RAM', '60%', 'Disk', '50%', 'beneath'])
   expect((await ui.find({ type: 'Text', text: '60%' }))?.props.color).toBe('warning')
 })
 
@@ -85,7 +88,59 @@ test('in quiet mode only what needs a look shows: a full disk, not calm memory',
   answerWorld(on, clock, files)
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ plugin: 'mod-machine', surface: 'desktop', ...BAND })
-  const texts = (await ui.findAll({ type: 'Text' })).map(found => found.text)
+  const texts = await shownTexts(ui)
   expect(texts).toContain('Disk')
   expect(texts).not.toContain('RAM')
 })
+
+// ---- shown texts ----
+// A chip's card is drawn hidden (display none) and shown only while the pointer
+// is on the chip, in the hover group they share. These read the mounted tree.
+type DrawnNode = { type?: string; props?: { display?: unknown }; hover?: { scope?: unknown; display?: unknown }; children?: unknown[] }
+
+// The texts on screen now, in order: what waits hidden is left out.
+async function shownTexts(ui: Pick<Mounted, 'findAll'>): Promise<string[]> {
+  return textsIn((await ui.findAll({}))[0], true)
+}
+
+// The texts of the card the chip of hover group `scope` opens; undefined when it has none.
+async function cardTexts(ui: Pick<Mounted, 'findAll'>, scope: string): Promise<string[] | undefined> {
+  const card = cardIn((await ui.findAll({}))[0], scope)
+
+  return card === undefined ? undefined : textsIn(card, false)
+}
+
+function cardIn(node: unknown, scope: string): DrawnNode | undefined {
+  if (typeof node !== 'object' || node === null) {
+    return undefined
+  }
+  const drawn = node as DrawnNode
+  if (drawn.props?.display === 'none' && drawn.hover?.scope === scope && drawn.hover.display === 'flex') {
+    return drawn
+  }
+  for (const child of drawn.children ?? []) {
+    const card = cardIn(child, scope)
+    if (card !== undefined) {
+      return card
+    }
+  }
+
+  return undefined
+}
+
+function textsIn(node: unknown, isShownOnly: boolean): string[] {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return [String(node)]
+  }
+  if (typeof node !== 'object' || node === null) {
+    return []
+  }
+  const drawn = node as DrawnNode
+  if (isShownOnly && drawn.props?.display === 'none') {
+    return []
+  }
+  const inner = (drawn.children ?? []).flatMap(child => textsIn(child, isShownOnly))
+
+  return drawn.type === 'Text' ? [inner.join('')] : inner
+}
+// ---- end of shown texts ----

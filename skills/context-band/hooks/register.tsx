@@ -657,12 +657,15 @@ export const register: Register = on => {
     )
     const counted = await read($, breakdown)
     // The context is always the first chip of the band's one line of figures, its tone
-    // saying how full it is; the chip reveals its card. It never grows into a row with a bar.
-    const isContextAtRest = true
+    // saying how full it is. Its card, shown while the pointer is on the chip, says how
+    // many tokens of the window are used and what fills them most.
+    const contextText = [last.tokens === null ? '' : `${kilo(last.tokens)} of ${kilo(last.window)}`, counted === null ? '' : contextCard(counted)]
+      .filter(part => part !== '')
+      .join(' · ')
     const contextHover =
-      counted !== null && !expanded ? (
+      contextText !== '' && !expanded ? (
         <Box display="none" hover={{ scope: CONTEXT_SCOPE, display: 'flex' }}>
-          {gridRow(ui, { name: '', figure: '', lines: [{ text: contextCard(counted), isDim: true }] }, columns)}
+          {gridRow(ui, { name: 'Context', figure, color: colorOf(last.percent), lines: [{ text: contextText, isDim: true }] }, columns)}
         </Box>
       ) : null
     const contextChip = (
@@ -670,25 +673,6 @@ export const register: Register = on => {
         {gridChip(ui, { name: 'Context', figure, color: colorOf(last.percent) })}
       </Box>
     )
-    const contextRow = (
-      <Box flexDirection="column">
-        <Box hover={{ scope: CONTEXT_SCOPE }}>
-          {gridRow(
-            ui,
-            {
-              name: 'Context',
-              figure,
-              color: colorOf(last.percent),
-              percent: last.percent ?? 0,
-              lines: [{ text: `${kilo(last.tokens)} of ${kilo(last.window)}`, isDim: true }],
-            },
-            columns,
-          )}
-        </Box>
-        {contextHover}
-      </Box>
-    )
-    const contextLine = isContextAtRest ? null : contextRow
     const clockNow = current === null ? 0 : await $.clock.now()
     const history = current === null ? [] : stepTimes(current, clockNow)
     const taskRow =
@@ -724,7 +708,7 @@ export const register: Register = on => {
     // that much shorter, instead of filling the toolbar's place with blank rows.
     const toolbarRows = rowsOf({ type: 'Box', props: { flexWrap: 'wrap', columnGap: 2 }, children: [toolbar, SIZE_STAND_IN] }, columns)
     const chosenHere = chosen === null ? null : chosen - (menuOpen ? 0 : toolbarRows)
-    const fixedRows = (menuOpen ? toolbarRows : 0) + rowsOf(contextLine, columns) + rowsOf(taskRow, columns)
+    const fixedRows = (menuOpen ? toolbarRows : 0) + rowsOf(taskRow, columns)
     const maxRows = Math.max(fixedRows + 1, Number.isFinite(e.props.maxRows) && e.props.maxRows > 0 ? Math.floor(e.props.maxRows) : BAND_MAX_ROWS)
     // The middle's rows at a set height, before it is drawn: how many runners list.
     const roomAhead = chosenHere === null ? null : Math.max(1, Math.min(chosenHere, maxRows) - fixedRows)
@@ -849,7 +833,7 @@ export const register: Register = on => {
     )
     const chipSlot = (
       <Box key={CHIPS_SLOT} columnGap={CHIP_GAP} flexWrap="wrap">
-        {[...(isContextAtRest ? [contextChip] : []), ...chips.pieces].sort(byPieceKey) as RenderElement[]}
+        {[contextChip, ...chips.pieces].sort(byPieceKey) as RenderElement[]}
       </Box>
     )
     const readingsRow = (
@@ -866,7 +850,7 @@ export const register: Register = on => {
     )
     const content: RenderElement[] = [
       readingsRow,
-      ...(isContextAtRest && contextHover !== null ? [contextHover] : []),
+      ...(contextHover === null ? [] : [contextHover]),
       meterSlot,
       ...leaseRows,
       ...(expanded ? [sectionHeader('Details', details === null ? 'counting the context' : 'what fills the window, largest first')] : []),
@@ -946,7 +930,6 @@ export const register: Register = on => {
     return (
       <Box key="context-band:root" flexDirection="column">
         {menuOpen && toolbarRow}
-        {contextLine}
         {middle}
         {taskRow}
       </Box>
@@ -2700,8 +2683,8 @@ function pieceRank(node: unknown, depth = 0): number | undefined {
 // the stacked pieces into its slots. Pieces are keyed `meter:NN:<mod>` or
 // `section:NN:<mod>` (NN the mod's order), and a slot keeps them in key order.
 // CHIPS_SLOT, first in the middle, is one line of the readings at rest, each a
-// chip keyed `chip:NN:<mod>`; a reading that needs a look is a full row in
-// METERS_SLOT instead (placeReadings sorts them).
+// chip keyed `chip:NN:<mod>`; a reading's card, shown while the pointer is on
+// its chip, waits hidden in METERS_SLOT (placeReadings puts both).
 // When the person set the band's height, the slots sit in a middle keyed
 // `FIT_PREFIX<rows>` that keeps to that many rows: a piece put in refits it,
 // what runs past the end leaves from the bottom, a note keyed
@@ -2763,7 +2746,9 @@ function placeInBand(ui: ElementTable, inner: RenderElement, slot: string, piece
 }
 
 // A meter mod's readings in the band: each one a chip on the band's one line of
-// figures, its tone saying when it needs a look. No reading grows into a row with a bar.
+// figures, its tone saying when it needs a look. A chip with more to say has a
+// card, drawn hidden in METERS_SLOT and shown while the pointer is on the chip:
+// the reading's row without a bar. No reading grows into a row with a bar.
 type BandReading = { row: GridRow; chip: GridChip; needsLook: boolean }
 
 function placeReadings(
@@ -2775,27 +2760,36 @@ function placeReadings(
   columns: number,
 ): RenderElement {
   const { Box } = ui
-  const atRest = readings
-  const looks: readonly BandReading[] = []
-  let placed = inner
-  if (atRest.length > 0) {
-    const chips = (
-      <Box key={pieceKey('chip', order, mod)} columnGap={CHIP_GAP} flexWrap="wrap">
-        {atRest.map(reading => gridChip(ui, reading.chip))}
-      </Box>
-    )
-    placed = placeInBand(ui, placed, CHIPS_SLOT, chips, columns)
+  if (readings.length === 0) {
+    return inner
   }
-  if (looks.length > 0) {
-    const rows = (
-      <Box key={pieceKey('meter', order, mod)} flexDirection="column">
-        {looks.map(reading => gridRow(ui, reading.row, columns))}
-      </Box>
-    )
-    placed = placeInBand(ui, placed, METERS_SLOT, rows, columns)
+  // A chip and its card share a hover group, one per reading across the family.
+  const scopeOf = (reading: BandReading) => `${mod}:${reading.chip.name}`.slice(0, 64)
+  const chips = (
+    <Box key={pieceKey('chip', order, mod)} columnGap={CHIP_GAP} flexWrap="wrap">
+      {readings.map(reading => (
+        <Box hover={{ scope: scopeOf(reading) }} flexShrink={0}>
+          {gridChip(ui, reading.chip)}
+        </Box>
+      ))}
+    </Box>
+  )
+  const placed = placeInBand(ui, inner, CHIPS_SLOT, chips, columns)
+  const cards = readings.filter(reading => reading.row.lines.some(line => line.text !== ''))
+  if (cards.length === 0) {
+    return placed
   }
+  const hidden = (
+    <Box key={pieceKey('meter', order, mod)} flexDirection="column">
+      {cards.map(reading => (
+        <Box display="none" hover={{ scope: scopeOf(reading), display: 'flex' }}>
+          {gridRow(ui, { name: reading.row.name, figure: reading.row.figure, ...(reading.row.color === undefined ? {} : { color: reading.row.color }), lines: reading.row.lines }, columns)}
+        </Box>
+      ))}
+    </Box>
+  )
 
-  return placed
+  return placeInBand(ui, placed, METERS_SLOT, hidden, columns)
 }
 
 // `node` with `piece` in its slot, in key order, and the middle of a set height
