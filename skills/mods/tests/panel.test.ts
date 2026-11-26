@@ -140,11 +140,13 @@ function switchesIn(world: World): unknown {
   return JSON.parse(world.files.get(SWITCHES) ?? 'null')
 }
 
-test('a new session opens the panel, which lists the installed mods in their order with a switch each', async ($, on) => {
+test('/mods opens the panel, which lists the installed mods in their order with a switch each', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const world = answerWorld(on, clock, installed())
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  expect(world.opened).toHaveLength(0)
+  await $.command.run({ command: 'mods', args: '', ...COMMAND })
   expect(world.opened.map(open => open.id)).toEqual(['mods'])
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -175,7 +177,7 @@ test('a switch writes the shared file; all off and all on cover every listed mod
 
   await clock.advance(10)
   await pane.press({ key: 'switch:mod-limits' })
-  expect(switchesIn(world)).toMatchObject({ off: ['mod-limits'], isPaneWanted: true })
+  expect(switchesIn(world)).toMatchObject({ off: ['mod-limits'] })
   expect(await pane.find({ type: 'Button', key: 'switch:mod-limits', text: 'Turn on' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '1 of 2 on · applies to every session' })).toBeDefined()
 
@@ -217,7 +219,6 @@ test('with the band switched off and the panel closed, a Mods button of its own 
   await clock.advance(10)
   await band.press({ key: 'mods' })
   expect(world.opened.map(open => open.id)).toEqual(['mods'])
-  expect(switchesIn(world)).toMatchObject({ isPaneWanted: true })
   expect(await band.find({ type: 'Button', key: 'mods' })).toBeUndefined()
 
   // Closed from its frame: the next poll finds it gone and the button is back.
@@ -238,14 +239,19 @@ test('while the band is on, the panel draws no button of its own in it', async (
   expect(await band.find({ type: 'Text', text: 'Context 40%' })).toBeDefined()
 })
 
-test('a session started after the person closed the panel leaves it closed', async ($, on) => {
+test('a new session never opens the panel by itself, even where an older file says it was open last time', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000 })
   const files = installed()
-  files.set(SWITCHES, JSON.stringify({ off: [], isPaneWanted: false, updatedAt: 900 }))
+  files.set(SWITCHES, JSON.stringify({ off: [], isPaneWanted: true, updatedAt: 900 }))
   const world = answerWorld(on, clock, files)
 
   await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
   expect(world.opened).toHaveLength(0)
+  await clock.advance(10_000)
+  expect(world.opened).toHaveLength(0)
+  // A switch written since keeps no such flag.
+  await $.command.run({ command: 'mods', args: 'off 2', ...COMMAND })
+  expect(switchesIn(world)).not.toHaveProperty('isPaneWanted')
 })
 
 test('/mods switches by number or name from the prompt and prints the list', async ($, on) => {

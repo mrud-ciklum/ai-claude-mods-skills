@@ -27,7 +27,6 @@ const UNORDERED = 99
 
 const DEFAULT_SWITCHES: Switches = {
   off: [],
-  isPaneWanted: true,
   quiet: false,
   settings: { sounds: true, voice: false },
   modSettings: {},
@@ -93,10 +92,8 @@ export const register: Register = on => {
     $.clock.every(RESCAN_MS, () => {
       void rescanWhileOpen($)
     })
-    if ((await read($, switches)).isPaneWanted) {
-      // Opened unasked: a narrow terminal keeps it undrawn until it widens or the person opens it.
-      await openPane($, false)
-    }
+    // The panel opens only when the person asks (/mods, the band's Mods button): never by itself
+    // at the start of a session.
 
     return started
   })
@@ -130,9 +127,6 @@ export const register: Register = on => {
     const closed = await next(e)
     await update($, isPaneOpen, () => false)
     await update($, isPaneShown, () => false)
-    if (e.origin.kind === 'person') {
-      await wantPane($, false)
-    }
 
     return closed
   }).catch(($, e, next) => next(e))
@@ -392,14 +386,11 @@ export const register: Register = on => {
 }
 
 // Opens the panel. Returns null once the surface drew it, else why it waits.
-async function openPane($: EngineInterface, isAsked: boolean): Promise<string | null> {
+async function openPane($: EngineInterface): Promise<string | null> {
   await rescan($)
   const opened = await $.ui.open({ id: PANE_ID, title: PANE_TITLE, columns: PANE_COLUMNS })
   await update($, isPaneOpen, () => true)
   await update($, isPaneShown, () => opened.isPlaced)
-  if (isAsked) {
-    await wantPane($, true)
-  }
 
   return opened.isPlaced ? null : `The mods panel waits: ${opened.reason}`
 }
@@ -416,11 +407,10 @@ async function showMods($: EngineInterface): Promise<void> {
     await $.ui.close({ id: PANE_ID })
     await update($, isPaneOpen, () => false)
     await update($, isPaneShown, () => false)
-    await wantPane($, false)
 
     return
   }
-  const waiting = await openPane($, true)
+  const waiting = await openPane($)
   if (waiting !== null) {
     // A pane the surface will not place is closed rather than left waiting.
     await $.ui.close({ id: PANE_ID })
@@ -443,14 +433,6 @@ async function followPane($: EngineInterface): Promise<void> {
     }
   } catch (error) {
     $.ui.log(`mods: could not list the panes: ${messageOf(error)}`, { to: 'debug' })
-  }
-}
-
-// New sessions open the panel the way the person last left it.
-async function wantPane($: EngineInterface, isWanted: boolean): Promise<void> {
-  const current = await readSwitchesFile($)
-  if (current.isPaneWanted !== isWanted) {
-    await writeSwitches($, { ...current, isPaneWanted: isWanted })
   }
 }
 
@@ -580,7 +562,6 @@ async function readSwitchesFile($: EngineInterface): Promise<Switches> {
 async function writeSwitches($: EngineInterface, wanted: Switches): Promise<void> {
   const written: Switches = {
     off: [...new Set(wanted.off)].sort(),
-    isPaneWanted: wanted.isPaneWanted,
     quiet: wanted.quiet,
     settings: wanted.settings,
     modSettings: wanted.modSettings ?? {},
@@ -605,7 +586,6 @@ function parseSwitches(text: string): Switches | null {
 
     return {
       off,
-      isPaneWanted: record.isPaneWanted !== false,
       quiet: record.quiet === true,
       settings: settingsIn(record.settings),
       modSettings: modSettingsIn(record.modSettings),

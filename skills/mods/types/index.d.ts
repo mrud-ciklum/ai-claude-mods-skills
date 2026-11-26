@@ -30,8 +30,6 @@ export type ModSetting = {
 export type Switches = {
   /** The names of the mods turned off; a mod not named here is on. */
   off: string[]
-  /** Whether a new session opens the panel: the person's last open or close decides. */
-  isPaneWanted: boolean
   /** Quiet mode: the band's meters show only what needs a look. */
   quiet: boolean
   /** Whether the mods play their sounds, and speak their news aloud. */
